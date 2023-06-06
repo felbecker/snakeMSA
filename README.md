@@ -1,5 +1,5 @@
 # snakeMSA
-A Snakemake pipeline to run easily reproducible benchmarks for various MSA tools.
+A Snakemake pipeline to run easily reproducible benchmarks of various MSA tools.
 
 Runs different MSA tools on the extHomFam dataset which consists of 5 sub-folders (sorted by MSA depth) with fasta files. Outputs {tool}.out files with SP, modeler, TC and column scores per protein family in the benchmark. 
 
