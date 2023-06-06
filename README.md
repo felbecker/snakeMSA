@@ -3,7 +3,9 @@ A Snakemake pipeline to run easily reproducible benchmarks of various MSA tools.
 
 Runs different MSA tools on the extHomFam dataset which consists of 5 sub-folders (sorted by MSA depth) with fasta files. Outputs {tool}.out files with SP, modeler, TC and column scores per protein family in the benchmark. 
 
-## Installation (once, assuming that conda is already installed)
+## Installation of Snakemake and all MSA tools 
+Assuming that conda is already installed, run this once:
+
 `chmod +x ./install.sh ; ./install.sh`
 
 ## Usage
