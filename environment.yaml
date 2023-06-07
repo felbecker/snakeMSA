@@ -1,7 +1,10 @@
 channels:
+  - conda-forge
   - bioconda
 dependencies:
+  - python >= 3.9
   - snakemake  
+  - learnMSA
   - t-coffee
   - famsa
   - kalign3

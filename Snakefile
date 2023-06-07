@@ -1,7 +1,7 @@
 DIRS, SAMPLES = glob_wildcards("test_data/{dir}/train/{sample}")
-print(DIRS)
-print(SAMPLES)
-TOOLS = ["famsa"]
+TOOLS = ["learnMSA", "famsa"]
+
+ruleorder: learnMSA > msa
 
 #compute one output table per tool
 rule all:
@@ -15,6 +15,9 @@ rule msa:
     output:
         "{tool}/alignments/{dir}/{sample}"
     threads: 32
+    resources:
+        mem_mb = 256000,
+        runtime = "3d"
     log:
         "{tool}/logs/{dir}/{sample}.log"
     benchmark:
@@ -24,15 +27,34 @@ rule msa:
         tool = "{tool}"
     run:
         if params.tool == "famsa":
-            shell("famsa -t {threads} {input} {output}")
+            shell("famsa -t {threads} {input} {output} > {log}")
         if params.tool == "t_coffee":
             #according to Santus et al. 2023 Supplementary information (their own tool)
             shell("""clustalo --threads={threads} -i {input} --guidetree-out params.tree ; \
             export MAX_N_PID_4_TCOFFEE=10000000 ; \
             t_coffee -reg -reg_method clustalo_msa -reg_tree params.tree -seq {input} \
-            -reg_nseq 1000 -reg_thread {threads} -outfile {output}""")
+            -reg_nseq 1000 -reg_thread {threads} -outfile {output} > {log}""")
         if params.tool == "kalign":
-            shell("kalign -n {threads} -i {input} -o {output}")
+            shell("kalign -n {threads} -i {input} -o {output} > {log}")
+            
+         
+rule learnMSA:
+    input:  
+         "test_data/{dir}/train/{sample}"
+    output:
+        "learnMSA/alignments/{dir}/{sample}"
+    threads: 32
+    resources:
+        mem_mb = 256000,
+        nvidia_gpu = 1,
+        runtime = "3d"
+    log:
+        "learnMSA/logs/{dir}/{sample}.log"
+    benchmark:
+        "learnMSA/benchmarks/{dir}/{sample}.txt"
+    shell:
+        "learnMSA -i {input} -o {output} -n 10 > {log}"
+    
         
         
 ## Derive the sub-MSA of the reference sequences from the full MSA
@@ -43,6 +65,8 @@ rule project_references:
     output:
         "{tool}/projections/{dir}/{sample}"
     threads: 8
+    resources:
+        mem_mb = 32000
     shell:
         "id_list=$(sed -n '/^>/p' {input.ref} | sed 's/^.//') ; "
         "export MAX_N_PID_4_TCOFFEE=10000000 ; "
@@ -58,6 +82,8 @@ rule score_msa:
     output:
         "{tool}/scores/{dir}/{sample}"
     threads: 8
+    resources:
+        mem_mb = 16000
     shell:
         "export MAX_N_PID_4_TCOFFEE=10000000 ; "
         "sp=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode sp | "
@@ -77,5 +103,7 @@ rule concat_scores:
     output:
         "{tool}.tbl"
     threads: 1
+    resources:
+        mem_mb = 1000
     shell:
         "cat {input} > {output}"
