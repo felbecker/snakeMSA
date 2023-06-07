@@ -18,8 +18,4 @@ Run the pipeline on a workstation:
 
 Run the pipeline via slurm:
 
-`snakemake --slurm --default-resources slurm_account=<your SLURM account> slurm_partition=<your SLURM partition>`
-
-Limitations:
-Currently CPU-only, so our own tool, [learnMSA](https://github.com/Gaius-Augustus/learnMSA), which uses GPU, has to be run separately. 
-Todo: Allow to run learnMSA on a different slurm partition than the rest of the tools.
+`snakemake --slurm --default-resources slurm_partition=<CPU partition> --set-resources learnMSA:slurm_partition=<GPU partition> --jobs 50`
