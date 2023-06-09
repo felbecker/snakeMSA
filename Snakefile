@@ -1,4 +1,4 @@
-DIRS, SAMPLES = glob_wildcards("test_data/{dir}/train/{sample}")
+DIRS, SAMPLES = glob_wildcards("data/{dir}/train/{sample}")
 TOOLS = ["learnMSA", "famsa"]
 
 ruleorder: learnMSA > msa
@@ -11,7 +11,7 @@ rule all:
         
 rule msa:
     input:  
-         "test_data/{dir}/train/{sample}"
+         "data/{dir}/train/{sample}"
     output:
         "{tool}/alignments/{dir}/{sample}"
     threads: 32
@@ -40,7 +40,7 @@ rule msa:
          
 rule learnMSA:
     input:  
-         "test_data/{dir}/train/{sample}"
+         "data/{dir}/train/{sample}"
     output:
         "learnMSA/alignments/{dir}/{sample}"
     threads: 32
@@ -52,8 +52,11 @@ rule learnMSA:
         "learnMSA/logs/{dir}/{sample}.log"
     benchmark:
         "learnMSA/benchmarks/{dir}/{sample}.txt"
+    params:
+        d=lambda wildcards: (SAMPLES.index(wildcards.sample)%4),
+        slice_dir="slices/{sample}"
     shell:
-        "learnMSA -i {input} -o {output} -n 10 > {log}"
+        "learnMSA -i {input} -o {output} -n 10 -d {params.d} --align_insertions --insertion_slice_dir {params.slice_dir} > {log}"
     
         
         
@@ -61,7 +64,7 @@ rule learnMSA:
 rule project_references:
     input:
         msa = "{tool}/alignments/{dir}/{sample}",
-        ref = "test_data/{dir}/refs/{sample}"
+        ref = "data/{dir}/refs/{sample}"
     output:
         "{tool}/projections/{dir}/{sample}"
     threads: 8
@@ -78,7 +81,7 @@ rule project_references:
 rule score_msa:
     input:
         msa = "{tool}/projections/{dir}/{sample}",
-        ref = "test_data/{dir}/refs/{sample}"
+        ref = "data/{dir}/refs/{sample}"
     output:
         "{tool}/scores/{dir}/{sample}"
     threads: 8
@@ -94,7 +97,7 @@ rule score_msa:
         "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
         "col=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode column | "
         "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
-        "echo $sp $modeler $tc $col >> {output}"
+        "echo {wildcards.dir} {wildcards.sample} $sp $modeler $tc $col >> {output}"
         
         
 rule concat_scores:
