@@ -18,4 +18,4 @@ Run the pipeline on a workstation:
 
 Run the pipeline via slurm:
 
-`snakemake --slurm --default-resources slurm_partition=<CPU partition> --set-resources learnMSA:slurm_partition=<GPU partition> --jobs 50`
+`snakemake --slurm --default-resources slurm_partition=<CPU partition> --set-resources learnMSA:slurm_partition=<GPU partition> --jobs 20 --keep-going`
