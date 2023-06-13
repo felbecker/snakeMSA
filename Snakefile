@@ -67,9 +67,11 @@ rule project_references:
         ref = "data/{dir}/refs/{sample}"
     output:
         "{tool}/projections/{dir}/{sample}"
-    threads: 8
+    threads: 32
     resources:
-        mem_mb = 32000
+        #some aligners might produce extremely large fasta files
+        #this allocates a huge chunk of memory, but the jobs are short
+        mem_mb = 500000
     shell:
         "id_list=$(sed -n '/^>/p' {input.ref} | sed 's/^.//') ; "
         "export MAX_N_PID_4_TCOFFEE=10000000 ; "
