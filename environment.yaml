@@ -10,3 +10,4 @@ dependencies:
   - famsa
   - kalign3
   - clustalo
+  - mmseqs2

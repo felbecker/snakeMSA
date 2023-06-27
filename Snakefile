@@ -1,4 +1,5 @@
-DIRS, SAMPLES = glob_wildcards("data/{dir}/train/{sample}")
+data = "data"
+DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
 TOOLS = ["learnMSA", "famsa"]
 
 ruleorder: learnMSA > msa
@@ -11,7 +12,7 @@ rule all:
         
 rule msa:
     input:  
-         "data/{dir}/train/{sample}"
+         data+"/{dir}/train/{sample}"
     output:
         "{tool}/alignments/{dir}/{sample}"
     threads: 32
@@ -40,12 +41,12 @@ rule msa:
          
 rule learnMSA:
     input:  
-         "data/{dir}/train/{sample}"
+         data+"/{dir}/train/{sample}"
     output:
         "learnMSA/alignments/{dir}/{sample}"
     threads: 32
     resources:
-        mem_mb = 256000,
+        mem_mb = 1000000, #temporary to make vision work
         nvidia_gpu = 1,
         runtime = "3d"
     log:
@@ -53,18 +54,18 @@ rule learnMSA:
     benchmark:
         "learnMSA/benchmarks/{dir}/{sample}.txt"
     params:
-        d=lambda wildcards: (SAMPLES.index(wildcards.sample)%4),
-        slice_dir="slices/{sample}"
+        slice_dir="learnMSA/slices/{dir}/{sample}",
+        cluster_dir="learnMSA/clustering/{dir}"
     shell:
-        "learnMSA -i {input} -o {output} -n 10 -d {params.d} --align_insertions --insertion_slice_dir {params.slice_dir} > {log}"
-    
+        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 -d 0 --align_insertions --insertion_slice_dir {params.slice_dir} "
+        "--sequence_weights --cluster_dir {params.cluster_dir} > {log}"
         
         
 ## Derive the sub-MSA of the reference sequences from the full MSA
 rule project_references:
     input:
         msa = "{tool}/alignments/{dir}/{sample}",
-        ref = "data/{dir}/refs/{sample}"
+        ref = data+"/{dir}/refs/{sample}"
     output:
         "{tool}/projections/{dir}/{sample}"
     threads: 32
@@ -83,7 +84,7 @@ rule project_references:
 rule score_msa:
     input:
         msa = "{tool}/projections/{dir}/{sample}",
-        ref = "data/{dir}/refs/{sample}"
+        ref = data+"/{dir}/refs/{sample}"
     output:
         "{tool}/scores/{dir}/{sample}"
     threads: 8
@@ -104,11 +105,15 @@ rule score_msa:
         
 rule concat_scores:
     input:
-        expand("{{tool}}/scores/{dir}/{sample}", zip, dir=DIRS, sample=SAMPLES)
+        scores = expand("{{tool}}/scores/{dir}/{sample}", zip, dir=DIRS, sample=SAMPLES),
+        benchmarks = expand("{{tool}}/benchmarks/{dir}/{sample}.txt", zip, dir=DIRS, sample=SAMPLES)
     output:
         "{tool}.tbl"
     threads: 1
     resources:
         mem_mb = 1000
-    shell:
-        "cat {input} > {output}"
+    run:
+        shell("echo -n "" > {output}")
+        for s,b in zip(input.scores, input.benchmarks):
+            #row by row for each sample, concatenate the scores and the second line of the benchmark file
+            shell("echo $(cat {s}) $(tail -n 1 {b}) >> {output}")
