@@ -80,21 +80,25 @@ rule project_references:
         "> {output}"
         
        
-## Compute a number of scoring metrics and store them in per-sample files
+## Compute a number of some general statistics and scoring metrics and store them in per-sample files
 rule score_msa:
     input:
         msa = "{tool}/projections/{dir}/{sample}",
-        ref = data+"/{dir}/refs/{sample}"
+        ref = data+"/{dir}/refs/{sample}",
+        all = data+"/{dir}/train/{sample}"
     output:
         "{tool}/scores/{dir}/{sample}"
     threads: 8
     resources:
         mem_mb = 16000
     shell:
+        "nseq=$(grep -c '>' {input.all}) ; "
+        "avg_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.all}) ;"
+        "avg_ref_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.ref}) ;"
         "export MAX_N_PID_4_TCOFFEE=10000000 ; "
         "sp_out=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode sp | "
         "grep -v 'seq1' | grep -v '*') ; "
-        "nseq=$(echo $sp_out | awk '{{ print $2}}') ; "
+        "nseq_ref=$(echo $sp_out | awk '{{ print $2}}') ; "
         "sim=$(echo $sp_out | awk '{{ print $3}}') ; "
         "sp=$(echo $sp_out | awk '{{ print $4}}') ; "
         "modeler=$(t_coffee -other_pg aln_compare -al1 {input.msa}  -al2 {input.ref} -compare_mode sp | "
@@ -103,7 +107,7 @@ rule score_msa:
         "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
         "col=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode column | "
         "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
-        "echo {wildcards.dir} {wildcards.sample} $nseq $sim $sp $modeler $tc $col >> {output}"
+        "echo {wildcards.dir} {wildcards.sample} $nseq $nseq_ref $avg_len $avg_ref_len $sim $sp $modeler $tc $col >> {output}"
         
         
 rule concat_scores:
