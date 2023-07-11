@@ -92,15 +92,18 @@ rule score_msa:
         mem_mb = 16000
     shell:
         "export MAX_N_PID_4_TCOFFEE=10000000 ; "
-        "sp=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode sp | "
-        "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
+        "sp_out=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode sp | "
+        "grep -v 'seq1' | grep -v '*') ; "
+        "nseq=$(echo $sp_out | awk '{{ print $2}}') ; "
+        "sim=$(echo $sp_out | awk '{{ print $3}}') ; "
+        "sp=$(echo $sp_out | awk '{{ print $4}}') ; "
         "modeler=$(t_coffee -other_pg aln_compare -al1 {input.msa}  -al2 {input.ref} -compare_mode sp | "
         "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
         "tc=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode tc | "
         "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
         "col=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode column | "
         "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
-        "echo {wildcards.dir} {wildcards.sample} $sp $modeler $tc $col >> {output}"
+        "echo {wildcards.dir} {wildcards.sample} $nseq $sim $sp $modeler $tc $col >> {output}"
         
         
 rule concat_scores:
