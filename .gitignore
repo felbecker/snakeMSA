@@ -158,8 +158,23 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+.ipynb_checkpoints
 ext_homfam_huge/
 ext_homfam_large/
 ext_homfam_medium/
 ext_homfam_small/
 ext_homfam_xlarge/
+homfam/
+famsa/
+learnMSA/
+learnMSA_language/
+mafft/
+muscle/
+t_coffee/
+magus/
+clustalo/
+classically/
+.vscode/
+.snakemake/
+tmp/
