@@ -1,0 +1,1 @@
+snakemake --slurm --default-resources slurm_partition=pinky --set-resources learnMSA:slurm_partition=vision learnMSA_language:slurm_partition=vision --jobs 200 --keep-going --rerun-incomplete

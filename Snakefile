@@ -1,8 +1,10 @@
 data = "data"
-DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
-TOOLS = ["learnMSA", "famsa"]
+# DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
+SAMPLES, = glob_wildcards(data+"/homfam/train/{sample}")
+DIRS = ["homfam"]*len(SAMPLES)
+TOOLS = ["learnMSA", "learnMSA_language", "famsa", "t_coffee", "clustalo", "magus", "muscle", "mafft"]
 
-ruleorder: learnMSA > msa
+ruleorder: learnMSA > learnMSA_language > msa
 
 #compute one output table per tool
 rule all:
@@ -25,18 +27,29 @@ rule msa:
         "{tool}/benchmarks/{dir}/{sample}.txt"
     params:
         tree = "{tool}/trees/{dir}/{sample}.mbed",
+        tree_dir = "{tool}/trees/{dir}/",
+        magus_tmp = "./magus/tmp/{sample}",
         tool = "{tool}"
     run:
         if params.tool == "famsa":
             shell("famsa -t {threads} {input} {output} > {log}")
         if params.tool == "t_coffee":
-            #according to Santus et al. 2023 Supplementary information (their own tool)
-            shell("""clustalo --threads={threads} -i {input} --guidetree-out params.tree ; \
+            shell("""mkdir -p {params.tree_dir} ; \
+            clustalo --threads={threads} -i {input} --guidetree-out {params.tree} --force -o /dev/null ; \
             export MAX_N_PID_4_TCOFFEE=10000000 ; \
-            t_coffee -reg -reg_method clustalo_msa -reg_tree params.tree -seq {input} \
+            t_coffee -reg -reg_method famsa_msa -reg_tree {params.tree} -seq {input} \
             -reg_nseq 1000 -reg_thread {threads} -outfile {output} > {log}""")
         if params.tool == "kalign":
             shell("kalign -n {threads} -i {input} -o {output} > {log}")
+        if params.tool == "clustalo":
+            shell("clustalo --threads={threads} -i {input} -o {output} > {log}")
+        if params.tool == "magus":
+            shell("magus -d {params.magus_tmp} --numprocs {threads} -i {input} -o {output} > {log}")
+        if params.tool == "muscle":
+            shell("muscle -super5 {input} -output {output} > {log}")
+        if params.tool == "mafft":
+            shell("mafft --thread {threads} --anysymbol --quiet --dpparttree {input} > {output}")
+            
             
          
 rule learnMSA:
@@ -59,6 +72,30 @@ rule learnMSA:
     shell:
         "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 -d 0 --align_insertions --insertion_slice_dir {params.slice_dir} "
         "--sequence_weights --cluster_dir {params.cluster_dir} > {log}"
+        
+        
+        
+rule learnMSA_language:
+    input:  
+         data+"/{dir}/train/{sample}"
+    output:
+        "learnMSA_language/alignments/{dir}/{sample}"
+    threads: 32
+    resources:
+        mem_mb = 1000000, #temporary to make vision work
+        nvidia_gpu = 1,
+        runtime = "3d"
+    log:
+        "learnMSA_language/logs/{dir}/{sample}.log"
+    benchmark:
+        "learnMSA_language/benchmarks/{dir}/{sample}.txt"
+    params:
+        slice_dir="learnMSA_language/slices/{dir}/{sample}",
+        cluster_dir="learnMSA_language/clustering/{dir}"
+    shell:
+        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 -d 0 --align_insertions --insertion_slice_dir {params.slice_dir} "
+        "--sequence_weights --cluster_dir {params.cluster_dir} --use_language_model > {log}"
+        
         
         
 ## Derive the sub-MSA of the reference sequences from the full MSA

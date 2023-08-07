@@ -11,3 +11,6 @@ dependencies:
   - kalign3
   - clustalo
   - mmseqs2
+  - muscle
+  - mafft
+  - transformers
