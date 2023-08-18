@@ -1,7 +1,7 @@
 # snakeMSA
 A Snakemake pipeline to run easily reproducible benchmarks of various MSA tools.
 
-Runs different MSA tools on the extHomFam 2 benchmark which consists of 5 sub-folders (sorted by MSA depth). Outputs {tool}.tbl files with SP, modeler, TC and column scores per protein family. 
+Runs different MSA tools on the HomFam benchmark. 
 
 ## Installation of Snakemake and all MSA tools 
 Assuming that conda is already installed, run this once:
