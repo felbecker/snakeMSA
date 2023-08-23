@@ -13,4 +13,3 @@ dependencies:
   - mmseqs2
   - muscle
   - mafft
-  - transformers

@@ -2,9 +2,9 @@ data = "data"
 # DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
 SAMPLES, = glob_wildcards(data+"/homfam/train/{sample}")
 DIRS = ["homfam"]*len(SAMPLES)
-TOOLS = ["learnMSA", "learnMSA_language", "famsa", "t_coffee", "clustalo", "magus", "muscle", "mafft"]
+TOOLS = ["learnMSA_paper", "learnMSA", "learnMSA_language", "famsa", "t_coffee", "clustalo", "magus", "muscle", "mafft"]
 
-ruleorder: learnMSA > learnMSA_language > msa
+ruleorder: learnMSA > learnMSA_language > learnMSA_paper > msa
 
 #compute one output table per tool
 rule all:
@@ -70,11 +70,33 @@ rule learnMSA:
         slice_dir="learnMSA/slices/{dir}/{sample}",
         cluster_dir="learnMSA/clustering/{dir}"
     shell:
-        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 -d 0 --align_insertions --insertion_slice_dir {params.slice_dir} "
+        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 -d 0"
         "--sequence_weights --cluster_dir {params.cluster_dir} > {log}"
         
         
+
+rule learnMSA_paper:
+    input:  
+         data+"/{dir}/train/{sample}"
+    output:
+        "learnMSA_paper/alignments/{dir}/{sample}"
+    threads: 32
+    resources:
+        mem_mb = 1000000, #temporary to make vision work
+        nvidia_gpu = 1,
+        runtime = "3d"
+    log:
+        "learnMSA_paper/logs/{dir}/{sample}.log"
+    benchmark:
+        "learnMSA_paper/benchmarks/{dir}/{sample}.txt"
+    params:
+        slice_dir="learnMSA_paper/slices/{dir}/{sample}",
+        cluster_dir="learnMSA_paper/clustering/{dir}"
+    shell:
+        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} --unaligned_insertions -n 10 -d 0 > {log}"
         
+
+
 rule learnMSA_language:
     input:  
          data+"/{dir}/train/{sample}"
@@ -93,7 +115,7 @@ rule learnMSA_language:
         slice_dir="learnMSA_language/slices/{dir}/{sample}",
         cluster_dir="learnMSA_language/clustering/{dir}"
     shell:
-        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 -d 0 --align_insertions --insertion_slice_dir {params.slice_dir} "
+        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 -d 0"
         "--sequence_weights --cluster_dir {params.cluster_dir} --use_language_model > {log}"
         
         
