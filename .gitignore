@@ -178,3 +178,15 @@ classically/
 .vscode/
 .snakemake/
 tmp/
+size_scaling/data/
+size_scaling/clustalo/
+size_scaling/famsa/
+size_scaling/learnMSA/
+size_scaling/mafft/
+size_scaling/magus/
+size_scaling/muscle/
+size_scaling/t_coffee/
+size_scaling/redo_*
+size_scaling/.snakemake/
+
+
