@@ -1,0 +1,139 @@
+data = "../data"
+SAMPLES, = glob_wildcards(data+"/homfam/train/{sample}")
+DIRS = ["homfam"]*len(SAMPLES)
+TOOLS = ["learnMSA_language"]
+
+
+#compute one output table per tool
+rule all:
+    input:
+        configurations = expand("results/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}.out", 
+                                tool=TOOLS,
+                                lm=config["language_models"],
+                                dimension=config["dimensions"],
+                                activation=config["activation"],
+                                num_components=config["num_components"],
+                                frozen_insertions=config["frozen_insertions"],
+                                use_l2=config["use_l2"],
+                                L2_match=config["L2_match"],
+                                L2_insert=config["L2_insert"],
+                                temperature_mode=config["temperature_mode"])
+        
+
+rule learnMSA_language:
+    input:  
+         data+"/{dir}/train/{sample}"
+    output:
+        "{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/alignments/{dir}/{sample}"
+    threads: 2
+    resources:
+        mem_mb = 30000, 
+        gpu = 1,
+        runtime = "4h",
+        learnMSA_load = 1,
+        partition = "vision"
+    log:
+        "{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/logs/{dir}/{sample}.log"
+    benchmark:
+        "{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/benchmarks/{dir}/{sample}.txt"
+    params:
+        slice_dir="{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/slices/{dir}/{sample}",
+        cluster_dir="{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/clustering/{dir}"
+    run:
+        l2_arg = "--use_L2 " if wildcards.use_l2.lower() == "true" else ""
+        frozen_insertions_arg = "--frozen_insertions " if wildcards.frozen_insertions.lower() == "true" else ""
+        l2_match_arg = "--L2_match " + wildcards.L2_match if int(wildcards.num_components) > 0 else "--L2_match 16"
+        print("Found wildcards for use_l2:", wildcards.use_l2, "and using argstring:", l2_arg)
+        print("Found wildcards for frozen_insertions:", wildcards.frozen_insertions, "and using argstring:", frozen_insertions_arg)
+        print("Found wildcards for L2_match:", wildcards.L2_match, "and using argstring:", l2_match_arg)
+        shell(
+        """python3 ../../tmp_work/learnMSA/learnMSA.py -i {input} -o {output} -n 10 \
+        --sequence_weights --cluster_dir {params.cluster_dir} --use_language_model --language_model {wildcards.lm} \
+        --scoring_model_activation {wildcards.activation} --scoring_model_dim {wildcards.dimension} \
+        --embedding_prior_components {wildcards.num_components} \
+        {l2_match_arg} --L2_insert {wildcards.L2_insert} {l2_arg}\
+        --temperature_mode {wildcards.temperature_mode} {frozen_insertions_arg}\
+        > {log}""") 
+        
+        
+        
+## Derive the sub-MSA of the reference sequences from the full MSA
+rule project_references:
+    input:
+        msa = "{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/alignments/{dir}/{sample}",
+        ref = data+"/{dir}/refs/{sample}"
+    output:
+        "{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/projections/{dir}/{sample}"
+    threads: 4
+    resources:
+        #some aligners might produce extremely large fasta files
+        #this allocates a huge chunk of memory, but the jobs are short
+        mem_mb = 50000,
+        partition = "batch, snowball, pinky"
+    run:
+        exit_status = open(input.msa).readline()[0].strip()
+        if exit_status == "FAILED":
+            # pass failed samples through
+             with open(output[0]) as fout:
+                fout.write("FAILED")
+        else:
+            shell("""id_list=$(sed -n '/^>/p' {input.ref} | sed 's/^.//') ; \
+                    export MAX_N_PID_4_TCOFFEE=10000000 ; \
+                    t_coffee -other_pg seq_reformat -in {input.msa} -action +extract_seq_list ${{id_list[@]}} +rm_gap \
+                    > {output}""")
+        
+       
+## Compute a number of some general statistics and scoring metrics and store them in per-sample files
+rule score_msa:
+    input:
+        msa = "{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/projections/{dir}/{sample}",
+        ref = data+"/{dir}/refs/{sample}",
+        all = data+"/{dir}/train/{sample}"
+    output:
+        "{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/scores/{dir}/{sample}"
+    threads: 4
+    resources:
+        mem_mb = 8000,
+        partition = "batch, snowball, pinky"
+    run:
+        exit_status = open(input.msa).readline()[0].strip()
+        if exit_status == "FAILED":
+            # insert a score of 0 for failed files
+            shell("""nseq=$(grep -c '>' {input.all}) ; \
+                    avg_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.all}) ;\
+                    avg_ref_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.ref}) ;\
+                    echo {wildcards.dir} {wildcards.sample} $nseq $nseq_ref $avg_len $avg_ref_len $sim 0 0 0 0 >> {output}""")
+        else:
+            shell("""nseq=$(grep -c '>' {input.all}) ; \
+                    avg_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.all}) ;\
+                    avg_ref_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.ref}) ;\
+                    export MAX_N_PID_4_TCOFFEE=10000000 ; \
+                    sp_out=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode sp | \
+                    grep -v 'seq1' | grep -v '*') ; \
+                    nseq_ref=$(echo $sp_out | awk '{{ print $2}}') ; \
+                    sim=$(echo $sp_out | awk '{{ print $3}}') ; \
+                    sp=$(echo $sp_out | awk '{{ print $4}}') ; \
+                    modeler=$(t_coffee -other_pg aln_compare -al1 {input.msa}  -al2 {input.ref} -compare_mode sp | \
+                    grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; \
+                    tc=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode tc | \
+                    grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; \
+                    col=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode column | \
+                    grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; \
+                    echo {wildcards.dir} {wildcards.sample} $nseq $nseq_ref $avg_len $avg_ref_len $sim $sp $modeler $tc $col >> {output}""")
+        
+        
+rule concat_scores:
+    input:
+        scores = expand("{{tool}}_{{lm}}_{{dimension}}_{{activation}}_{{num_components}}_{{frozen_insertions}}_{{use_l2}}_{{L2_match}}_{{L2_insert}}_{{temperature_mode}}/scores/{dir}/{sample}", zip, dir=DIRS, sample=SAMPLES),
+        benchmarks = expand("{{tool}}_{{lm}}_{{dimension}}_{{activation}}_{{num_components}}_{{frozen_insertions}}_{{use_l2}}_{{L2_match}}_{{L2_insert}}_{{temperature_mode}}/benchmarks/{dir}/{sample}.txt", zip, dir=DIRS, sample=SAMPLES)
+    output:
+        "results/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}.out"
+    threads: 1
+    resources:
+        mem_mb = 1000,
+        partition = "batch, snowball, pinky"
+    run:
+        shell("echo -n "" > {output}")
+        for s,b in zip(input.scores, input.benchmarks):
+            #row by row for each sample, concatenate the scores and the second line of the benchmark file
+            shell("echo $(cat {s}) $(tail -n 1 {b}) >> {output}")
