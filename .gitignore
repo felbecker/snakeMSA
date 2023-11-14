@@ -193,5 +193,6 @@ lm_experiments/learnMSA_language*
 lm_experiments/.snakemake/
 lm_experiments/logs/
 wip*/
+*backup*
 
 

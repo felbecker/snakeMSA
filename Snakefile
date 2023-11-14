@@ -1,8 +1,8 @@
 data = "data"
-# DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
-SAMPLES, = glob_wildcards(data+"/homfam/train/{sample}")
-DIRS = ["homfam"]*len(SAMPLES)
-TOOLS = ["learnMSA_paper", "learnMSA", "learnMSA_language", "famsa", "t_coffee", "clustalo", "magus", "muscle", "mafft"]
+DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
+#SAMPLES, = glob_wildcards(data+"/homfam/train/{sample}")
+#DIRS = ["homfam"]*len(SAMPLES)
+TOOLS = ["learnMSA_paper", "learnMSA", "learnMSA_language", "famsa", "t_coffee", "clustalo", "muscle", "mafft"]
 
 ruleorder: learnMSA > learnMSA_language > learnMSA_paper > msa
 
@@ -16,11 +16,12 @@ rule msa:
     input:  
          data+"/{dir}/train/{sample}"
     output:
-        "{tool}/alignments/{dir}/{sample}"
+        "{tool}/alignments/{dir}/{sample}",
     threads: 32
     resources:
         mem_mb = 256000,
-        runtime = "3d"
+        runtime = "3d",
+        msa_load = 1
     log:
         "{tool}/logs/{dir}/{sample}.log"
     benchmark:
@@ -32,23 +33,31 @@ rule msa:
         tool = "{tool}"
     run:
         if params.tool == "famsa":
-            shell("famsa -t {threads} {input} {output} > {log}")
+            cmd = f"famsa -t {threads} {input} {output} > {log}"
         if params.tool == "t_coffee":
-            shell("""mkdir -p {params.tree_dir} ; \
+            cmd = f"""mkdir -p {params.tree_dir} ; \
             clustalo --threads={threads} -i {input} --guidetree-out {params.tree} --force -o /dev/null ; \
             export MAX_N_PID_4_TCOFFEE=10000000 ; \
             t_coffee -reg -reg_method famsa_msa -reg_tree {params.tree} -seq {input} \
-            -reg_nseq 1000 -reg_thread {threads} -outfile {output} > {log}""")
+            -reg_nseq 1000 -reg_thread {threads} -outfile {output} > {log}"""
         if params.tool == "kalign":
-            shell("kalign -n {threads} -i {input} -o {output} > {log}")
+            cmd = f"kalign -n {threads} -i {input} -o {output} > {log}"
         if params.tool == "clustalo":
-            shell("clustalo --threads={threads} -i {input} -o {output} > {log}")
+            cmd = f"clustalo --threads={threads} -i {input} -o {output} > {log}"
         if params.tool == "magus":
-            shell("magus -d {params.magus_tmp} --numprocs {threads} -i {input} -o {output} > {log}")
+            cmd = f"magus -d {params.magus_tmp} --numprocs {threads} -i {input} -o {output} > {log}"
         if params.tool == "muscle":
-            shell("muscle -super5 {input} -output {output} > {log}")
+            cmd = f"muscle -super5 {input} -output {output} > {log}"
         if params.tool == "mafft":
-            shell("mafft --thread {threads} --anysymbol --quiet --dpparttree {input} > {output}")
+            cmd = f"mafft --thread {threads} --anysymbol --quiet --dpparttree {input} > {output}"
+
+        p = subprocess.Popen(cmd, shell= True, stdout= subprocess.PIPE, stderr= subprocess.PIPE)
+        stdout, stderr= p.communicate()
+
+        if p.returncode != 0:
+            with open(output[0]) as fout:
+                fout.write("FAILED")
+            print(stderr.decode(), file=sys.stderr)
             
             
          
@@ -59,9 +68,11 @@ rule learnMSA:
         "learnMSA/alignments/{dir}/{sample}"
     threads: 32
     resources:
-        mem_mb = 1000000, #temporary to make vision work
-        nvidia_gpu = 1,
-        runtime = "3d"
+        mem_mb = 240000, 
+        gpu = 1,
+        runtime = "3d",
+        learnMSA_load = 1,
+        partition = "vision"
     log:
         "learnMSA/logs/{dir}/{sample}.log"
     benchmark:
@@ -70,7 +81,7 @@ rule learnMSA:
         slice_dir="learnMSA/slices/{dir}/{sample}",
         cluster_dir="learnMSA/clustering/{dir}"
     shell:
-        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 -d 0"
+        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 "
         "--sequence_weights --cluster_dir {params.cluster_dir} > {log}"
         
         
@@ -82,9 +93,11 @@ rule learnMSA_paper:
         "learnMSA_paper/alignments/{dir}/{sample}"
     threads: 32
     resources:
-        mem_mb = 1000000, #temporary to make vision work
-        nvidia_gpu = 1,
-        runtime = "3d"
+        mem_mb = 240000, 
+        gpu = 1,
+        runtime = "3d",
+        learnMSA_load = 1,
+        partition = "vision"
     log:
         "learnMSA_paper/logs/{dir}/{sample}.log"
     benchmark:
@@ -93,7 +106,7 @@ rule learnMSA_paper:
         slice_dir="learnMSA_paper/slices/{dir}/{sample}",
         cluster_dir="learnMSA_paper/clustering/{dir}"
     shell:
-        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} --unaligned_insertions -n 10 -d 0 > {log}"
+        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} --unaligned_insertions -n 10 > {log}"
         
 
 
@@ -104,9 +117,11 @@ rule learnMSA_language:
         "learnMSA_language/alignments/{dir}/{sample}"
     threads: 32
     resources:
-        mem_mb = 1000000, #temporary to make vision work
-        nvidia_gpu = 1,
-        runtime = "3d"
+        mem_mb = 240000, 
+        gpu = 1,
+        runtime = "3d",
+        learnMSA_load = 1,
+        partition = "vision"
     log:
         "learnMSA_language/logs/{dir}/{sample}.log"
     benchmark:
@@ -115,7 +130,7 @@ rule learnMSA_language:
         slice_dir="learnMSA_language/slices/{dir}/{sample}",
         cluster_dir="learnMSA_language/clustering/{dir}"
     shell:
-        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 -d 0"
+        "python3 ../learnMSA/learnMSA.py -i {input} -o {output} -n 10 "
         "--sequence_weights --cluster_dir {params.cluster_dir} --use_language_model > {log}"
         
         
@@ -131,12 +146,19 @@ rule project_references:
     resources:
         #some aligners might produce extremely large fasta files
         #this allocates a huge chunk of memory, but the jobs are short
-        mem_mb = 500000
-    shell:
-        "id_list=$(sed -n '/^>/p' {input.ref} | sed 's/^.//') ; "
-        "export MAX_N_PID_4_TCOFFEE=10000000 ; "
-        "t_coffee -other_pg seq_reformat -in {input.msa} -action +extract_seq_list ${{id_list[@]}} +rm_gap"
-        "> {output}"
+        mem_mb = 120000,
+        partition = "batch"
+    run:
+        exit_status = open(input.msa).readline()[0].strip()
+        if exit_status == "FAILED":
+            # pass failed samples through
+             with open(output[0]) as fout:
+                fout.write("FAILED")
+        else:
+            shell("""id_list=$(sed -n '/^>/p' {input.ref} | sed 's/^.//') ; \
+                    export MAX_N_PID_4_TCOFFEE=10000000 ; \
+                    t_coffee -other_pg seq_reformat -in {input.msa} -action +extract_seq_list ${{id_list[@]}} +rm_gap \
+                    > {output}""")
         
        
 ## Compute a number of some general statistics and scoring metrics and store them in per-sample files
@@ -149,24 +171,33 @@ rule score_msa:
         "{tool}/scores/{dir}/{sample}"
     threads: 8
     resources:
-        mem_mb = 16000
-    shell:
-        "nseq=$(grep -c '>' {input.all}) ; "
-        "avg_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.all}) ;"
-        "avg_ref_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.ref}) ;"
-        "export MAX_N_PID_4_TCOFFEE=10000000 ; "
-        "sp_out=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode sp | "
-        "grep -v 'seq1' | grep -v '*') ; "
-        "nseq_ref=$(echo $sp_out | awk '{{ print $2}}') ; "
-        "sim=$(echo $sp_out | awk '{{ print $3}}') ; "
-        "sp=$(echo $sp_out | awk '{{ print $4}}') ; "
-        "modeler=$(t_coffee -other_pg aln_compare -al1 {input.msa}  -al2 {input.ref} -compare_mode sp | "
-        "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
-        "tc=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode tc | "
-        "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
-        "col=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode column | "
-        "grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; "
-        "echo {wildcards.dir} {wildcards.sample} $nseq $nseq_ref $avg_len $avg_ref_len $sim $sp $modeler $tc $col >> {output}"
+        mem_mb = 16000,
+        partition = "batch"
+    run:
+        exit_status = open(input.msa).readline()[0].strip()
+        if exit_status == "FAILED":
+            # insert a score of 0 for failed files
+            shell("""nseq=$(grep -c '>' {input.all}) ; \
+                    avg_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.all}) ;\
+                    avg_ref_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.ref}) ;\
+                    echo {wildcards.dir} {wildcards.sample} $nseq $nseq_ref $avg_len $avg_ref_len $sim 0 0 0 0 >> {output}""")
+        else:
+            shell("""nseq=$(grep -c '>' {input.all}) ; \
+                    avg_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.all}) ;\
+                    avg_ref_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.ref}) ;\
+                    export MAX_N_PID_4_TCOFFEE=10000000 ; \
+                    sp_out=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode sp | \
+                    grep -v 'seq1' | grep -v '*') ; \
+                    nseq_ref=$(echo $sp_out | awk '{{ print $2}}') ; \
+                    sim=$(echo $sp_out | awk '{{ print $3}}') ; \
+                    sp=$(echo $sp_out | awk '{{ print $4}}') ; \
+                    modeler=$(t_coffee -other_pg aln_compare -al1 {input.msa}  -al2 {input.ref} -compare_mode sp | \
+                    grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; \
+                    tc=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode tc | \
+                    grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; \
+                    col=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode column | \
+                    grep -v 'seq1' | grep -v '*' | awk '{{ print $4}}') ; \
+                    echo {wildcards.dir} {wildcards.sample} $nseq $nseq_ref $avg_len $avg_ref_len $sim $sp $modeler $tc $col >> {output}""")
         
         
 rule concat_scores:
@@ -177,7 +208,8 @@ rule concat_scores:
         "{tool}.tbl"
     threads: 1
     resources:
-        mem_mb = 1000
+        mem_mb = 1000,
+        partition = "batch"
     run:
         shell("echo -n "" > {output}")
         for s,b in zip(input.scores, input.benchmarks):
