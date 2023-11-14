@@ -188,5 +188,9 @@ size_scaling/muscle/
 size_scaling/t_coffee/
 size_scaling/redo_*
 size_scaling/.snakemake/
+lm_experiments/learnMSA_language*
+lm_experiments/.snakemake/
+lm_experiments/logs/
+
 
 
