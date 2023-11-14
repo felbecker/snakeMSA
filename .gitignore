@@ -178,6 +178,7 @@ classically/
 .vscode/
 .snakemake/
 tmp/
+logs/
 size_scaling/data/
 size_scaling/clustalo/
 size_scaling/famsa/
@@ -191,6 +192,6 @@ size_scaling/.snakemake/
 lm_experiments/learnMSA_language*
 lm_experiments/.snakemake/
 lm_experiments/logs/
-
+wip*/
 
 
