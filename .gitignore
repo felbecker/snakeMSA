@@ -160,25 +160,12 @@ cython_debug/
 #.idea/
 
 .ipynb_checkpoints
-ext_homfam_huge/
-ext_homfam_large/
-ext_homfam_medium/
-ext_homfam_small/
-ext_homfam_xlarge/
-homfam/
-famsa/
-learnMSA/
-learnMSA_language/
-mafft/
-muscle/
-t_coffee/
-magus/
-clustalo/
+data/
+outputs/
 classically/
 .vscode/
 .snakemake/
 tmp/
-logs/
 size_scaling/data/
 size_scaling/clustalo/
 size_scaling/famsa/
@@ -192,7 +179,12 @@ size_scaling/.snakemake/
 lm_experiments/learnMSA_language*
 lm_experiments/.snakemake/
 lm_experiments/logs/
+lm_experiments/outputs/
+test_release/.snakemake/
+test_release/logs/
+test_release/outputs/
+test_release/tmp/
 wip*/
 *backup*
-
+logs/
 

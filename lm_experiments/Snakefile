@@ -7,63 +7,49 @@ TOOLS = ["learnMSA_language"]
 #compute one output table per tool
 rule all:
     input:
-        configurations = expand("results/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}.out", 
+        configurations = expand("results/{tool}_{lm}_{dimension}_{activation}_{num_components}.out", 
                                 tool=TOOLS,
                                 lm=config["language_models"],
                                 dimension=config["dimensions"],
                                 activation=config["activation"],
-                                num_components=config["num_components"],
-                                frozen_insertions=config["frozen_insertions"],
-                                use_l2=config["use_l2"],
-                                L2_match=config["L2_match"],
-                                L2_insert=config["L2_insert"],
-                                temperature_mode=config["temperature_mode"])
+                                num_components=config["num_components"])
         
 
 rule learnMSA_language:
     input:  
          data+"/{dir}/train/{sample}"
     output:
-        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/alignments/{dir}/{sample}"
+        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}/alignments/{dir}/{sample}"
     threads: 2
     resources:
         mem_mb = 30000, 
         gpu = 1,
-        runtime = "4h",
+        runtime = "12h",
         learnMSA_load = 1,
         partition = "vision"
     log:
-        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/logs/{dir}/{sample}.log"
+        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}/logs/{dir}/{sample}.log"
     benchmark:
-        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/benchmarks/{dir}/{sample}.txt"
+        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}/benchmarks/{dir}/{sample}.txt"
     params:
-        slice_dir="outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/slices/{dir}/{sample}",
-        cluster_dir="outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/clustering/{dir}"
+        slice_dir="outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}/slices/{dir}/{sample}",
+        cluster_dir="outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}/clustering/{dir}"
     run:
-        l2_arg = "--use_L2 " if wildcards.use_l2.lower() == "true" else ""
-        frozen_insertions_arg = "--frozen_insertions " if wildcards.frozen_insertions.lower() == "true" else ""
-        l2_match_arg = "--L2_match " + wildcards.L2_match if int(wildcards.num_components) > 0 else "--L2_match 16"
-        print("Found wildcards for use_l2:", wildcards.use_l2, "and using argstring:", l2_arg)
-        print("Found wildcards for frozen_insertions:", wildcards.frozen_insertions, "and using argstring:", frozen_insertions_arg)
-        print("Found wildcards for L2_match:", wildcards.L2_match, "and using argstring:", l2_match_arg)
         shell(
-        """python3 ../../tmp_work/learnMSA/learnMSA.py -i {input} -o {output} -n 10 \
+        """python3 ../../tmp_work/learnMSA/learnMSA.py -i {input} -o {output} -n 4 \
         --sequence_weights --cluster_dir {params.cluster_dir} --use_language_model --language_model {wildcards.lm} \
         --scoring_model_activation {wildcards.activation} --scoring_model_dim {wildcards.dimension} \
-        --embedding_prior_components {wildcards.num_components} \
-        {l2_match_arg} --L2_insert {wildcards.L2_insert} {l2_arg}\
-        --temperature_mode {wildcards.temperature_mode} {frozen_insertions_arg}\
-        > {log}""") 
+        --embedding_prior_components {wildcards.num_components} --frozen_insertions > {log}""") 
         
         
         
 ## Derive the sub-MSA of the reference sequences from the full MSA
 rule project_references:
     input:
-        msa = "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/alignments/{dir}/{sample}",
+        msa = "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}/alignments/{dir}/{sample}",
         ref = data+"/{dir}/refs/{sample}"
     output:
-        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/projections/{dir}/{sample}"
+        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}/projections/{dir}/{sample}"
     threads: 4
     resources:
         #some aligners might produce extremely large fasta files
@@ -86,11 +72,11 @@ rule project_references:
 ## Compute a number of some general statistics and scoring metrics and store them in per-sample files
 rule score_msa:
     input:
-        msa = "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/projections/{dir}/{sample}",
+        msa = "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}/projections/{dir}/{sample}",
         ref = data+"/{dir}/refs/{sample}",
         all = data+"/{dir}/train/{sample}"
     output:
-        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}/scores/{dir}/{sample}"
+        "outputs/{tool}_{lm}_{dimension}_{activation}_{num_components}/scores/{dir}/{sample}"
     threads: 4
     resources:
         mem_mb = 8000,
@@ -124,10 +110,10 @@ rule score_msa:
         
 rule concat_scores:
     input:
-        scores = expand("outputs/{{tool}}_{{lm}}_{{dimension}}_{{activation}}_{{num_components}}_{{frozen_insertions}}_{{use_l2}}_{{L2_match}}_{{L2_insert}}_{{temperature_mode}}/scores/{dir}/{sample}", zip, dir=DIRS, sample=SAMPLES),
-        benchmarks = expand("outputs/{{tool}}_{{lm}}_{{dimension}}_{{activation}}_{{num_components}}_{{frozen_insertions}}_{{use_l2}}_{{L2_match}}_{{L2_insert}}_{{temperature_mode}}/benchmarks/{dir}/{sample}.txt", zip, dir=DIRS, sample=SAMPLES)
+        scores = expand("outputs/{{tool}}_{{lm}}_{{dimension}}_{{activation}}_{{num_components}}/scores/{dir}/{sample}", zip, dir=DIRS, sample=SAMPLES),
+        benchmarks = expand("outputs/{{tool}}_{{lm}}_{{dimension}}_{{activation}}_{{num_components}}/benchmarks/{dir}/{sample}.txt", zip, dir=DIRS, sample=SAMPLES)
     output:
-        "results/{tool}_{lm}_{dimension}_{activation}_{num_components}_{frozen_insertions}_{use_l2}_{L2_match}_{L2_insert}_{temperature_mode}.out"
+        "results/{tool}_{lm}_{dimension}_{activation}_{num_components}.out"
     threads: 1
     resources:
         mem_mb = 1000,

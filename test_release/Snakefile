@@ -1,77 +1,13 @@
-data = "data"
-DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
-# SAMPLES, = glob_wildcards(data+"/ext_homfam_small/train/{sample}")
-# DIRS = ["ext_homfam_small"]*len(SAMPLES)
-TOOLS = ["learnMSA", "learnMSA_language", "famsa", "t_coffee", "clustalo", "muscle", "mafft"] #magus
-
-ruleorder: learnMSA > learnMSA_language > learnMSA_paper > msa
+data = "../data"
+SAMPLES, = glob_wildcards(data+"/homfam/train/{sample}")
+DIRS = ["homfam"]*len(SAMPLES)
+TOOLS = ["learnMSA"]
 
 #compute one output table per tool
 rule all:
     input:
         expand("results/{tool}.out", tool=TOOLS)
         
-        
-rule msa:
-    input:  
-         data+"/{dir}/train/{sample}"
-    output:
-        "outputs/{tool}/alignments/{dir}/{sample}"
-    threads: 32
-    resources:
-        mem_mb = 250000,
-        runtime = "3d",
-        msa_load = 1,
-        partition = "pinky"
-    log:
-        "outputs/{tool}/logs/{dir}/{sample}.log"
-    benchmark:
-        "outputs/{tool}/benchmarks/{dir}/{sample}.txt"
-    params:
-        tree = "outputs/{tool}/trees/{dir}/{sample}.mbed",
-        tree_dir = "outputs/{tool}/trees/{dir}/",
-        magus_tmp = "outputs/magus/tmp/{dir}/{sample}",
-        tool = "{tool}",
-        dir = "{dir}"
-    run:
-        import subprocess
-        if params.tool == "famsa":
-            cmd = f"famsa -t {threads} {input} {output} > {log}"
-        if params.tool == "t_coffee":
-            cmd = f"""mkdir -p {params.tree_dir} ; \
-            clustalo --threads={threads} -i {input} --guidetree-out {params.tree} --force -o /dev/null ; \
-            export MAX_N_PID_4_TCOFFEE=10000000 ; \
-            t_coffee -reg -reg_method famsa_msa -reg_tree {params.tree} -seq {input} \
-            -reg_nseq 1000 -reg_thread {threads} -outfile {output} > {log}"""
-        if params.tool == "kalign":
-            cmd = f"kalign -n {threads} -i {input} -o {output} > {log}"
-        if params.tool == "clustalo":
-            cmd = f"clustalo --threads={threads} -i {input} -o {output} > {log}"
-        if params.tool == "magus":
-            cmd = f"magus -d {params.magus_tmp} --numprocs {threads} -i {input} -o {output} > {log}"
-        if params.tool == "muscle":
-            if params.dir == "homstrad":
-                cmd = f"muscle -align {input} -output {output} > {log}"
-            else:
-                cmd = f"muscle -super5 {input} -output {output} > {log}"
-        if params.tool == "mafft":
-            if "ext" in params.dir:
-                cmd = f"mafft --thread {threads} --anysymbol --quiet --dpparttree {input} > {output}"
-            else:
-                cmd = f"mafft --thread {threads} --anysymbol --quiet {input} > {output}"
-
-        p = subprocess.Popen(cmd, shell= True, stdout= subprocess.PIPE, stderr= subprocess.PIPE)
-        stdout, stderr= p.communicate()
-        
-        print(stdout.decode(), file=sys.stdout)
-
-        if not os.path.exists(output[0]):
-            with open(output[0], "w") as fout:
-                fout.write("FAILED")
-            print(stderr.decode(), file=sys.stderr)
-            
-            
-         
 rule learnMSA:
     input:  
          data+"/{dir}/train/{sample}"
@@ -79,9 +15,9 @@ rule learnMSA:
         "outputs/learnMSA/alignments/{dir}/{sample}"
     threads: 4
     resources:
-        mem_mb = 64000, 
+        mem_mb = 50000, 
         gpu = 1,
-        runtime = "3d",
+        runtime = "10h",
         learnMSA_load = 1,
         partition = "vision"
     log:
@@ -92,60 +28,8 @@ rule learnMSA:
         slice_dir="outputs/learnMSA/slices/{dir}/{sample}",
         cluster_dir="outputs/learnMSA/clustering/{dir}"
     shell:
-        "python3 ../../tmp_work/learnMSA/learnMSA.py -i {input} -o {output} -n 10 "
+        "python3 ../../learnMSA/learnMSA.py -i {input} -o {output} "
         "--sequence_weights --cluster_dir {params.cluster_dir} > {log}"
-        
-        
-
-rule learnMSA_paper:
-    input:  
-         data+"/{dir}/train/{sample}"
-    output:
-        "outputs/learnMSA_paper/alignments/{dir}/{sample}"
-    threads: 4
-    resources:
-        mem_mb = 64000, 
-        gpu = 1,
-        runtime = "3d",
-        learnMSA_load = 1,
-        partition = "vision"
-    log:
-        "outputs/learnMSA_paper/logs/{dir}/{sample}.log"
-    benchmark:
-        "outputs/learnMSA_paper/benchmarks/{dir}/{sample}.txt"
-    params:
-        slice_dir="outputs/learnMSA_paper/slices/{dir}/{sample}",
-        cluster_dir="outputs/learnMSA_paper/clustering/{dir}"
-    shell:
-        "python3 ../../tmp_work/learnMSA/learnMSA.py -i {input} -o {output} --unaligned_insertions -n 10 > {log}"
-        
-
-
-rule learnMSA_language:
-    input:  
-         data+"/{dir}/train/{sample}"
-    output:
-        "outputs/learnMSA_language/alignments/{dir}/{sample}"
-    threads: 4
-    resources:
-        mem_mb = 64000, 
-        gpu = 1,
-        runtime = "3d",
-        learnMSA_load = 1,
-        partition = "vision"
-    log:
-        "outputs/learnMSA_language/logs/{dir}/{sample}.log"
-    benchmark:
-        "outputs/learnMSA_language/benchmarks/{dir}/{sample}.txt"
-    params:
-        slice_dir="outputs/learnMSA_language/slices/{dir}/{sample}",
-        cluster_dir="outputs/learnMSA_language/clustering/{dir}"
-    shell:
-        "python3 ../../tmp_work/learnMSA/learnMSA.py -i {input} -o {output} -n 4 \
-        --sequence_weights --cluster_dir {params.cluster_dir} --use_language_model --language_model protT5 \
-        --scoring_model_activation softmax --scoring_model_dim 32 \
-        --embedding_prior_components 10 --frozen_insertions > {log}"
-        
         
         
 ## Derive the sub-MSA of the reference sequences from the full MSA
@@ -160,7 +44,8 @@ rule project_references:
         #some aligners might produce extremely large fasta files
         #this allocates a huge chunk of memory, but the jobs are short
         mem_mb = 500000,
-        partition = "pinky"
+        partition = "pinky",
+        runtime = "24h"
     run:
         exit_status = open(input.msa).readline().strip()
         if exit_status == "FAILED":
