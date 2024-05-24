@@ -19,6 +19,8 @@ default-resources:
 resources:
   - msa_load=50
   - learnMSA_load=24
+  - gpu0=1
+  - gpu1=1
 restart-times: 0
 max-jobs-per-second: 10
 max-status-checks-per-second: 1

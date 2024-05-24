@@ -1,11 +1,11 @@
 data = "data"
-DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
-TOOLS = ["learnMSA", "learnMSA_language2", "learnMSA_paper", "famsa", "t_coffee", "muscle"]
+#DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
+TOOLS = ["learnMSA_language_cpu"] #["learnMSA", "learnMSA_language2", "learnMSA_paper", "famsa", "t_coffee", "muscle"]
 #to run all tools only of HomFam, uncomment the next 3 lines
-#SAMPLES, = glob_wildcards(data+"/homfam/train/{sample}")
-#DIRS = ["homfam"]*len(SAMPLES)
+SAMPLES, = glob_wildcards(data+"/homfam/train/{sample}")
+DIRS = ["homfam"]*len(SAMPLES)
 #TOOLS = ["learnMSA", "learnMSA_language2", "learnMSA_paper", "mafft_sparsecore", "famsa", "t_coffee", "clustalo", "muscle", "magus"]
-ruleorder: learnMSA > learnMSA_language > learnMSA_language2 > learnMSA_paper > msa
+ruleorder: learnMSA > learnMSA_language > learnMSA_language2 > learnMSA_paper > learnMSA_language_cpu > msa
 
 #compute one output table per tool
 rule all:
@@ -41,14 +41,14 @@ rule msa:
         if params.tool == "t_coffee":
             cmd = f"""mkdir -p {params.tree_dir} ; \
             clustalo --threads={threads} -i {input} --guidetree-out {params.tree} --force -o /dev/null ; \
-            export MAX_N_PID_4_TCOFFEE=10000000 ; \
+            export MAX_N_PID_4_TCOFFEE=$(cat /proc/sys/kernel/pid_max) ; \
             t_coffee -reg -reg_method famsa_msa -reg_tree {params.tree} -seq {input} \
             -reg_nseq 1000 -reg_thread {threads} -outfile {output} > {log}"""
         if params.tool == "t_coffee_sparsecore": 
             #unable to run this, may try again in the future
             cmd = f"""mkdir -p {params.tree_dir} ; \
             clustalo --threads={threads} -i {input} --guidetree-out {params.tree} --force -o /dev/null ; \
-            export MAX_N_PID_4_TCOFFEE=10000000 ; \
+            export MAX_N_PID_4_TCOFFEE=$(cat /proc/sys/kernel/pid_max) ; \
             t_coffee -reg -reg_method mafftsparsecore_msa -reg_tree {params.tree} -seq {input} \
             -reg_nseq 1000 -reg_thread {threads} -outfile {output} > {log}"""
         if params.tool == "kalign":
@@ -178,6 +178,31 @@ rule learnMSA_language2:
         --sequence_weights --cluster_dir {params.cluster_dir} --use_language_model --language_model protT5 \
         --scoring_model_activation sigmoid --scoring_model_dim 16 \
         --embedding_prior_components 32 --frozen_insertions > {log}"
+
+
+
+rule learnMSA_language_cpu:
+    input:  
+         data+"/{dir}/train/{sample}"
+    output:
+        "outputs/learnMSA_language_cpu/alignments/{dir}/{sample}"
+    threads: 32
+    resources:
+        mem_mb = 250000,
+        runtime = "3d",
+        msa_load = 1,
+        partition = "pinky"
+    log:
+        "outputs/learnMSA_language_cpu/logs/{dir}/{sample}.log"
+    benchmark:
+        "outputs/learnMSA_language_cpu/benchmarks/{dir}/{sample}.txt"
+    params:
+        cluster_dir="outputs/learnMSA_language_cpu/clustering/{dir}"
+    shell:
+        "python3 ../tmp_work/learnMSA/learnMSA.py -i {input} -o {output} -n 5 \
+        --sequence_weights --cluster_dir {params.cluster_dir} --use_language_model --language_model protT5 \
+        --scoring_model_activation sigmoid --scoring_model_dim 16 \
+        --embedding_prior_components 32 --frozen_insertions > {log}"
         
 
 
@@ -209,7 +234,7 @@ rule project_references:
                         fout.write("FAILED")
                 else:
                     shell("""id_list=$(sed -n '/^>/p' {input.ref} | sed 's/^.//') ; \
-                            export MAX_N_PID_4_TCOFFEE=10000000 ; \
+                            export MAX_N_PID_4_TCOFFEE=$(cat /proc/sys/kernel/pid_max) ; \
                             t_coffee -other_pg seq_reformat -in {input.msa} -action +extract_seq_list ${{id_list[@]}} +rm_gap \
                             > {output}""")
         
@@ -239,7 +264,7 @@ rule score_msa:
                 shell("""nseq=$(grep -c '>' {input.all}) ; \
                         avg_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.all}) ;\
                         avg_ref_len=$(awk '{{/>/&&++a||b+=length()}}END{{print b/a}}' {input.ref}) ;\
-                        export MAX_N_PID_4_TCOFFEE=10000000 ; \
+                        export MAX_N_PID_4_TCOFFEE=$(cat /proc/sys/kernel/pid_max) ; \
                         sp_out=$(t_coffee -other_pg aln_compare -al1 {input.ref} -al2 {input.msa} -compare_mode sp | \
                         grep -v 'seq1' | grep -v '*') ; \
                         nseq_ref=$(echo $sp_out | awk '{{ print $2}}') ; \
