@@ -1,11 +1,11 @@
 data = "data"
 #DIRS, SAMPLES = glob_wildcards(data+"/{dir}/train/{sample}")
-TOOLS = ["learnMSA_language_cpu"] #["learnMSA", "learnMSA_language2", "learnMSA_paper", "famsa", "t_coffee", "muscle"]
+TOOLS = ["learnMSA_no_weights"] #["learnMSA", "learnMSA_language2", "learnMSA_paper", "famsa", "t_coffee", "muscle"]
 #to run all tools only of HomFam, uncomment the next 3 lines
 SAMPLES, = glob_wildcards(data+"/homfam/train/{sample}")
 DIRS = ["homfam"]*len(SAMPLES)
 #TOOLS = ["learnMSA", "learnMSA_language2", "learnMSA_paper", "mafft_sparsecore", "famsa", "t_coffee", "clustalo", "muscle", "magus"]
-ruleorder: learnMSA > learnMSA_language > learnMSA_language2 > learnMSA_paper > learnMSA_language_cpu > msa
+ruleorder: learnMSA_no_weights > learnMSA > learnMSA_language > learnMSA_language2 > learnMSA_paper > learnMSA_language_cpu > msa
 
 #compute one output table per tool
 rule all:
@@ -103,6 +103,26 @@ rule learnMSA:
     shell:
         "python3 ../tmp_work/learnMSA/learnMSA.py -i {input} -o {output} -n 10 "
         "--sequence_weights --cluster_dir {params.cluster_dir} > {log}"
+
+
+rule learnMSA_no_weights:
+    input:  
+         data+"/{dir}/train/{sample}"
+    output:
+        "outputs/learnMSA_no_weights/alignments/{dir}/{sample}"
+    threads: 4
+    resources:
+        mem_mb = 250000, 
+        gpu = 1,
+        runtime = "1h",
+        learnMSA_load = 1,
+        partition = "vision"
+    log:
+        "outputs/learnMSA_no_weights/logs/{dir}/{sample}.log"
+    benchmark:
+        "outputs/learnMSA_no_weights/benchmarks/{dir}/{sample}.txt"
+    shell:
+        "python3 ../tmp_work/learnMSA/learnMSA.py -i {input} -o {output} -n 10 > {log}"
         
         
 
@@ -219,7 +239,7 @@ rule project_references:
         #this allocates a huge chunk of memory, but the jobs are short
         mem_mb = 500000,
         partition = "pinky,vision",
-        runtime = "24h"
+        runtime = "1h"
     run:
         import os
         if os.path.getsize(input.msa) > int(2.5e11): #output MSA too large (>250GB) too handle, assume failed
@@ -234,6 +254,7 @@ rule project_references:
                         fout.write("FAILED")
                 else:
                     shell("""id_list=$(sed -n '/^>/p' {input.ref} | sed 's/^.//') ; \
+                            export MAX_N_PID_4_TCOFFEE=$(cat /proc/sys/kernel/pid_max) ; \
                             export MAX_N_PID_4_TCOFFEE=$(cat /proc/sys/kernel/pid_max) ; \
                             t_coffee -other_pg seq_reformat -in {input.msa} -action +extract_seq_list ${{id_list[@]}} +rm_gap \
                             > {output}""")
@@ -250,7 +271,8 @@ rule score_msa:
     threads: 8
     resources:
         mem_mb = 16000,
-        partition = "batch"
+        partition = "batch",
+        runtime = "1h"
     run:
         with open(input.msa, "r") as msa_file:
             exit_status = msa_file.readline().strip()
@@ -288,7 +310,8 @@ rule concat_scores:
     threads: 1
     resources:
         mem_mb = 1000,
-        partition = "batch"
+        partition = "batch",
+        runtime = "1h"
     run:
         shell("echo -n "" > {output}_tmp")
         for s,b in zip(input.scores, input.benchmarks):

@@ -29,7 +29,7 @@ rule learnMSA:
         cluster_dir="outputs/learnMSA/clustering/{dir}"
     shell:
         "python3 ../../learnMSA/learnMSA.py -i {input} -o {output} "
-        "--sequence_weights --cluster_dir {params.cluster_dir} > {log}"
+        "--use_language_model --sequence_weights --cluster_dir {params.cluster_dir} > {log}"
         
         
 ## Derive the sub-MSA of the reference sequences from the full MSA
@@ -70,7 +70,7 @@ rule score_msa:
     threads: 8
     resources:
         mem_mb = 16000,
-        partition = "batch"
+        partition = "pinky"
     run:
         exit_status = open(input.msa).readline().strip()
         if exit_status == "FAILED":
@@ -107,7 +107,7 @@ rule concat_scores:
     threads: 1
     resources:
         mem_mb = 1000,
-        partition = "batch"
+        partition = "pinky"
     run:
         shell("echo -n "" > {output}")
         for s,b in zip(input.scores, input.benchmarks):
