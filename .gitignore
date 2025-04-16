@@ -1,0 +1,12 @@
+__pycache__/
+build/
+dist/
+.ipynb_checkpoints
+.vscode/
+.snakemake/
+
+tmp/
+data/
+outputs/
+results/
+
