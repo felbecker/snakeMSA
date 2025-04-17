@@ -1,0 +1,41 @@
+rule align:
+    input:  
+        config["data_path"]+"/unaligned/{sample}"
+    output:
+        "outputs/{tool}/alignments/{sample}",
+    threads: 4
+    resources:
+        mem_mb = 64000, 
+        gpu = 1,
+        runtime = "1d",
+        partition = config["gpu_partition"],
+    log:
+        "outputs/{tool}/logs/{sample}.log"
+    benchmark:
+        "outputs/{tool}/benchmarks/{sample}.txt"
+    params:
+        workdir="outputs/{tool}/workdirs/{sample}/",
+    run:
+        tool_path=config["tools"][wildcards.tool]["path"]
+        if "learnMSA" in wildcards.tool:
+            shell("python3 {tool_path} \
+                    -i {input} \
+                    -o {output} \
+                    --cluster_dir {params.workdir} "
+                    + dict_to_cmd_args(config["tools"][wildcards.tool]["params"]) +
+                    " > {log}")
+        else:
+            shell("cp {input} {output}")
+
+
+def dict_to_cmd_args(params):
+    """
+    Converts a dictionary to a string of command-line arguments.
+
+    Args:
+        params (dict): Dictionary of parameters.
+
+    Returns:
+        str: Command-line arguments as a string.
+    """
+    return " ".join(f"{key} {value}" for key, value in params.items())

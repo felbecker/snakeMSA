@@ -1,0 +1,49 @@
+# type: ignore
+
+rule score_msa:
+    input:
+        est = "outputs/{tool}/alignments/{sample}",
+        ref = config["data_path"]+"/aligned/{sample}",
+    output:
+        proj = "outputs/{tool}/projections/{sample}",
+        score = "outputs/{tool}/scores/{sample}.score"
+    threads: 8
+    resources:
+        mem_mb = 16000,
+        partition = config["cpu_partition"],
+        runtime = "30m"
+    shell:
+        # first project the estimated msa w.r.t. the reference sequences
+        # strip the extension from the sample name and write it with the scores
+        # into a single line, such that score files can be easily concatenated to a table
+        "python tools/project_msa.py \
+        --msa {input.est} \
+        --ref {input.ref} \
+        --out {output.proj} && \
+        echo -n $(basename {wildcards.sample} | sed 's/\\.[^.]*$//') \
+        $(java -jar FastSP/FastSP.jar -r {input.ref} -e {output.proj} \
+        | awk '{{print $2}}' \
+        | tr '\n' ' ') \
+        > {output.score}"
+        
+
+rule concat_scores:
+    input:
+        scores = expand("outputs/{{tool}}/scores/{sample}.score", zip, sample=SAMPLES),
+        benchmarks = expand("outputs/{{tool}}/benchmarks/{sample}.txt", zip, sample=SAMPLES)
+    output:
+        "results/{tool}.out"
+    threads: 1
+    resources:
+        mem_mb = 1000,
+        partition = config["cpu_partition"],
+        runtime = "5m"
+    run:
+        shell("echo -n "" > {output}")
+        for s,b in zip(input.scores, input.benchmarks):
+            #row by row for each sample, concatenate the scores and the second line of the benchmark file
+            shell("echo $(cat {s}) $(tail -n 1 {b}) >> {output}")
+
+
+def project(msa):
+    pass

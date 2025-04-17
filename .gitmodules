@@ -1,0 +1,3 @@
+[submodule "FastSP"]
+	path = FastSP
+	url = https://github.com/smirarab/FastSP

@@ -6,7 +6,8 @@ dist/
 .snakemake/
 
 tmp/
-data/
 outputs/
 results/
+data/*
+!data/example_dataset
 
