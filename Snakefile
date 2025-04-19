@@ -14,3 +14,4 @@ rule all:
 
 include: "rules/align"
 include: "rules/score_msa"
+include: "rules/evaluate"

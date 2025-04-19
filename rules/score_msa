@@ -39,11 +39,14 @@ rule concat_scores:
         partition = config["cpu_partition"],
         runtime = "5m"
     run:
-        shell("echo -n "" > {output}")
+        shell("echo -n 'sample ' > {output}")
+        # write the header
+        shell("java -jar FastSP/FastSP.jar"
+                +" -r " + config["data_path"]+"/aligned/"+SAMPLES[0]
+                +" -e " + config["data_path"]+"/aligned/"+SAMPLES[0]
+                + " | awk '{{print $1}}' \
+                    | tr '\n' ' ' >> {output}")
+        shell("echo $(head -n 1 " + input.benchmarks[0] + ") >> {output}")
         for s,b in zip(input.scores, input.benchmarks):
             #row by row for each sample, concatenate the scores and the second line of the benchmark file
             shell("echo $(cat {s}) $(tail -n 1 {b}) >> {output}")
-
-
-def project(msa):
-    pass
