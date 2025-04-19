@@ -2,7 +2,7 @@ rule align:
     input:  
         config["data_path"]+"/unaligned/{sample}"
     output:
-        "outputs/{tool}/alignments/{sample}",
+        "outputs_"+config["name"]+"/{tool}/alignments/{sample}",
     threads: 4
     resources:
         mem_mb = 64000, 
@@ -10,11 +10,11 @@ rule align:
         runtime = "1d",
         partition = config["gpu_partition"],
     log:
-        "outputs/{tool}/logs/{sample}.log"
+        "outputs_"+config["name"]+"/{tool}/logs/{sample}.log"
     benchmark:
-        "outputs/{tool}/benchmarks/{sample}.txt"
+        "outputs_"+config["name"]+"/{tool}/benchmarks/{sample}.txt"
     params:
-        workdir="outputs/{tool}/workdirs/{sample}/",
+        workdir="outputs_"+config["name"]+"/{tool}/workdirs/{sample}/",
     run:
         tool_path=config["tools"][wildcards.tool]["path"]
         if "learnMSA" in wildcards.tool:

@@ -2,11 +2,11 @@
 
 rule score_msa:
     input:
-        est = "outputs/{tool}/alignments/{sample}",
+        est = "outputs_"+config["name"]+"/{tool}/alignments/{sample}",
         ref = config["data_path"]+"/aligned/{sample}",
     output:
-        proj = "outputs/{tool}/projections/{sample}",
-        score = "outputs/{tool}/scores/{sample}.score"
+        proj = "outputs_"+config["name"]+"/{tool}/projections/{sample}",
+        score = "outputs_"+config["name"]+"/{tool}/scores/{sample}.score"
     threads: 8
     resources:
         mem_mb = 16000,
@@ -29,10 +29,10 @@ rule score_msa:
 
 rule concat_scores:
     input:
-        scores = expand("outputs/{{tool}}/scores/{sample}.score", zip, sample=SAMPLES),
-        benchmarks = expand("outputs/{{tool}}/benchmarks/{sample}.txt", zip, sample=SAMPLES)
+        scores = expand("outputs_"+config["name"]+"/{{tool}}/scores/{sample}.score", zip, sample=SAMPLES),
+        benchmarks = expand("outputs_"+config["name"]+"/{{tool}}/benchmarks/{sample}.txt", zip, sample=SAMPLES)
     output:
-        "results/{tool}.out"
+        "results_"+config["name"]+"/{tool}.out"
     threads: 1
     resources:
         mem_mb = 1000,

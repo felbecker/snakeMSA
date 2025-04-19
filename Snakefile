@@ -7,7 +7,7 @@ SAMPLES, = glob_wildcards(config["data_path"]+"/unaligned/{sample}")
 
 rule all:
     input:
-        expand("results/{tool}.out", 
+        expand("results_"+config["name"]+"/{tool}.out", 
                tool=TOOLS,
                sample=SAMPLES)
 

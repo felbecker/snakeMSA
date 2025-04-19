@@ -6,8 +6,10 @@ dist/
 .snakemake/
 
 tmp/
-outputs/
-results/
+outputs*/
+results*/
 data/*
 !data/example_dataset
+configs/*
+!data/default.json
 
