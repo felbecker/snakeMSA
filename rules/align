@@ -19,11 +19,12 @@ rule align:
     run:
         tool_path=config["tools"][wildcards.tool]["path"]
         if "learnMSA" in wildcards.tool:
+            argstring = dict_to_cmd_args(config["tools"][wildcards.tool]["params"])
             shell("python3 {tool_path} \
                     -i {input} \
                     -o {output} \
                     --cluster_dir {params.workdir} "
-                    + dict_to_cmd_args(config["tools"][wildcards.tool]["params"]) +
+                    + argstring +
                     " > {log}")
         else:
             shell("cp {input} {output}")
@@ -39,4 +40,5 @@ def dict_to_cmd_args(params):
     Returns:
         str: Command-line arguments as a string.
     """
-    return " ".join(f"{key} {value}" for key, value in params.items())
+    return " ".join(f"{key} {value}" if value != "" else f"{key}"
+                        for key, value in params.items())

@@ -17,7 +17,7 @@ def validate_run_names(run_names):
     Validate the run names by checking if they exist.
     """
     for run in run_names:
-        if (not os.path.exists("results_"+run) 
+        if (not os.path.exists("results/"+run) 
             or not os.path.exists(os.path.join("configs", run+".json"))):
             raise ValueError(f"Run {run} does not exist.")
 
@@ -44,7 +44,7 @@ def make_merged_df(run_names, tools):
     for run_name in run_names:
         for i,tool in enumerate(tools):
             print(tool)
-            filename = f"results_{run_name}/{tool}.out"
+            filename = f"results/{run_name}/{tool}.out"
             df = pd.read_csv(filename, index_col=False, sep=' ')
             df["tool"] = tool
             df["run_name"] = run_name
