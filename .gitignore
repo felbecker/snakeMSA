@@ -10,6 +10,7 @@ outputs*/
 results*/
 data/*
 !data/example_dataset
+!data/homfam/get_homfam.sh
 configs/*
 !data/default.json
 
