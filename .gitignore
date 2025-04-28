@@ -13,4 +13,5 @@ data/*
 !data/homfam/get_homfam.sh
 configs/*
 !data/default.json
+!data/benchmark_all.json
 

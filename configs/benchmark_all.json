@@ -1,0 +1,120 @@
+{
+    "name": "benchmark_all",
+    "tools": {
+      "famsa" : {
+        "command": "conda run -n famsa_env famsa",
+        "params": [
+          "-t {threads}",
+          "{input}",
+          "{output}"
+        ]
+      },
+      "kalign" : {
+        "command": "conda run -n kalign_env kalign",
+        "params": [
+          "-n {threads}",
+          "-i {input}",
+          "-o {output}"
+        ]
+      },
+      "clustalo" : {
+        "command": "conda run -n clustalo_env clustalo",
+        "params": [
+          "--threads={threads}",
+          "-i {input}",
+          "-o {output}"
+        ]
+      },
+      "t-coffee" : {
+        "command": "conda run -n t-coffee_env t_coffee",
+        "params": [
+          "-reg",
+          "-nseq 100",
+          "-tree mbed",
+          "-method clustalo_msa",
+          "-seq {input}",
+          "-outfile {output}",
+          "-outtree {tree}"
+        ]
+      },
+      "t-coffee_fast" : {
+        "command": "conda run -n t-coffee_env t_coffee",
+        "params": [
+          "-reg",
+          "-nseq 100",
+          "-tree parttree",
+          "-method mafftfftnsi_msa",
+          "-seq {input}",
+          "-outfile {output}",
+          "-outtree {tree}"
+        ]
+      },
+      "magus" : {
+        "command": "conda run -n magus_env magus",
+        "params": [
+          "-d {workdir}",
+          "--numprocs {threads}",
+          "-i {input}",
+          "-o {output}"
+        ]
+      },
+      "muscle" : {
+        "command": "conda run -n muscle_env muscle",
+        "params": [
+          "-super5",
+          "{input}",
+          "-output {output}"
+        ]
+      },
+      "mafft" : {
+        "command": "conda run -n mafft_env mafft",
+        "params": [
+          "--thread {threads}",
+          "--anysymbol",
+          "--quiet",
+          "{input}"
+        ]
+      },
+      "mafft_dpparttree" : {
+        "command": "conda run -n mafft_env mafft",
+        "params": [
+          "--thread {threads}",
+          "--anysymbol",
+          "--quiet",
+          "--dpparttree",
+          "{input}"
+        ]
+      },
+      "learnMSA" : {
+        "command": "conda run -n learnMSA_env learnMSA",
+        "params": [
+          "-i {input}",
+          "-o {output}",
+          "-n 10"
+        ]
+      },
+      "learnMSA_legacy" : {
+        "command": "conda run -n learnMSA_env learnMSA",
+        "params": [
+          "-i {input}",
+          "-o {output}",
+          "-n 10",
+          "--no_sequence_weights",
+          "--unaligned_insertions"
+        ]
+      },
+      "learnMSA2" : {
+          "command": "conda run -n learnMSA_env learnMSA",
+          "params": [
+            "-i {input}",
+            "-o {output}",
+            "-n 4",
+            "--use_language_model"
+          ]
+      }
+    },
+    "data_path": "data/homfam",
+    "cpu_partition": "",
+    "gpu_partition": "",
+    "align_threads": 32
+}

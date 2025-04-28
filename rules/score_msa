@@ -12,25 +12,58 @@ rule score_msa:
         mem_mb = 16000,
         partition = config["cpu_partition"],
         runtime = "30m"
-    shell:
-        # first project the estimated msa w.r.t. the reference sequences
-        # strip the extension from the sample name and write it with the scores
-        # into a single line, such that score files can be easily concatenated to a table
-        "python tools/project_msa.py \
-        --msa {input.est} \
-        --ref {input.ref} \
-        --out {output.proj} && \
-        echo -n $(basename {wildcards.sample} | sed 's/\\.[^.]*$//') \
-        $(java -jar FastSP/FastSP.jar -r {input.ref} -e {output.proj} \
-        | awk '{{print $2}}' \
-        | tr '\n' ' ') \
-        > {output.score}"
+    run:
+        msa_failed = False
+        with open(input.est, "r") as est_file:
+            if est_file.readline().strip() == "FAILED":
+                msa_failed = True
+
+        # strip the extension from the sample name 
+        sample_name = os.path.basename(wildcards.sample).rsplit('.', 1)[0]
+
+        if not msa_failed:
+
+            # first project the estimated msa w.r.t. the reference sequences
+            shell(
+                "python tools/project_msa.py" 
+                + " --msa {input.est}" 
+                + " --ref {input.ref}" 
+                + " --out {output.proj}"
+            )
+            # compute scores
+            fastsp_output = shell(
+                "java -jar FastSP/FastSP.jar -r {input.ref} -e {output.proj}", 
+                read=True
+            )
+            # write it with the scores into a single line
+            success_flag = 1
+            values = [
+                line.split()[1] for line in fastsp_output.strip().split('\n')
+            ]
+
+        else:
+            # If project_msa.py fails, create an empty output.proj
+            with open(output.proj, 'w') as f:
+                pass
+            success_flag = 0
+            values = ['0'] * 7
+
+        with open(output.score, 'w') as f:
+            f.write(f"{sample_name} {success_flag} {' '.join(values)}")
         
 
 rule concat_scores:
     input:
-        scores = expand("outputs/"+config["name"]+"/{{tool}}/scores/{sample}.score", zip, sample=SAMPLES),
-        benchmarks = expand("outputs/"+config["name"]+"/{{tool}}/benchmarks/{sample}.txt", zip, sample=SAMPLES)
+        scores = expand(
+            "outputs/"+config["name"]+"/{{tool}}/scores/{sample}.score", 
+            zip, 
+            sample=SAMPLES
+        ),
+        benchmarks = expand(
+            "outputs/"+config["name"]+"/{{tool}}/benchmarks/{sample}.txt", 
+            zip, 
+            sample=SAMPLES
+        )
     output:
         "results/"+config["name"]+"/{tool}.out"
     threads: 1
@@ -39,7 +72,7 @@ rule concat_scores:
         partition = config["cpu_partition"],
         runtime = "5m"
     run:
-        shell("echo -n 'sample ' > {output}")
+        shell("echo -n 'sample success ' > {output}")
         # write the header
         shell("java -jar FastSP/FastSP.jar"
                 +" -r " + config["data_path"]+"/aligned/"+SAMPLES[0]
@@ -48,5 +81,6 @@ rule concat_scores:
                     | tr '\n' ' ' >> {output}")
         shell("echo $(head -n 1 " + input.benchmarks[0] + ") >> {output}")
         for s,b in zip(input.scores, input.benchmarks):
-            #row by row for each sample, concatenate the scores and the second line of the benchmark file
+            #row by row for each sample, concatenate the scores and the second 
+            # line of the benchmark file
             shell("echo $(cat {s}) $(tail -n 1 {b}) >> {output}")

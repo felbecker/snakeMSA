@@ -65,4 +65,4 @@ if __name__ == '__main__':
 
     df = make_merged_df(args.i, common_tools)
 
-    print(df.groupby(["run_name", "tool"])[["SP-Score", "TC", "s"]].mean())
+    print(df.groupby(["run_name", "tool"])[["SP-Score", "TC", "s", "success"]].mean())

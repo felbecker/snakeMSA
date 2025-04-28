@@ -2,7 +2,7 @@
     "name": "default",
     "tools": {
       "learnMSA" : {
-        "path": "/home/felix/src/learnMSA/learnMSA.py",
+        "command": "python /home/felix/src/learnMSA/learnMSA.py",
         "params": {
           "-n": 5
             }

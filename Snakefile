@@ -1,7 +1,5 @@
 # type: ignore
 
-configfile: "configs/default.json"
-
 TOOLS = config["tools"]
 SAMPLES, = glob_wildcards(config["data_path"]+"/unaligned/{sample}")
 
