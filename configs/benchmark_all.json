@@ -84,33 +84,6 @@
           "--dpparttree",
           "{input}"
         ]
-      },
-      "learnMSA" : {
-        "command": "conda run -n learnMSA_env learnMSA",
-        "params": [
-          "-i {input}",
-          "-o {output}",
-          "-n 10"
-        ]
-      },
-      "learnMSA_legacy" : {
-        "command": "conda run -n learnMSA_env learnMSA",
-        "params": [
-          "-i {input}",
-          "-o {output}",
-          "-n 10",
-          "--no_sequence_weights",
-          "--unaligned_insertions"
-        ]
-      },
-      "learnMSA2" : {
-          "command": "conda run -n learnMSA_env learnMSA",
-          "params": [
-            "-i {input}",
-            "-o {output}",
-            "-n 4",
-            "--use_language_model"
-          ]
       }
     },
     "data_path": "data/homfam",

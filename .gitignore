@@ -12,6 +12,8 @@ data/*
 !data/example_dataset
 !data/homfam/get_homfam.sh
 configs/*
-!data/default.json
+!configs/default.json
+!configs/benchmark_all.json
+!configs/benchmark_learnMSA.json
 !data/benchmark_all.json
 
