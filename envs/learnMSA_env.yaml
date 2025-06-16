@@ -1,9 +1,11 @@
 channels:
   - conda-forge
   - bioconda
+  - pytorch
 dependencies:
   - python == 3.12
   - mmseqs2
+  - pytorch == 2.6
   - pip
   - pip:
     - learnMSA
