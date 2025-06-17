@@ -87,7 +87,6 @@
       }
     },
     "data_path": "data/homfam",
-    "cpu_partition": "",
-    "gpu_partition": "",
+    "use_gpu": 0,
     "align_threads": 32
 }

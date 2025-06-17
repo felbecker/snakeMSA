@@ -10,7 +10,6 @@ rule score_msa:
     threads: 8
     resources:
         mem_mb = 16000,
-        partition = config["cpu_partition"],
         runtime = "30m"
     run:
         msa_failed = False
@@ -69,7 +68,6 @@ rule concat_scores:
     threads: 1
     resources:
         mem_mb = 1000,
-        partition = config["cpu_partition"],
         runtime = "5m"
     run:
         shell("echo -n 'sample success ' > {output}")

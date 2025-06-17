@@ -1,5 +1,5 @@
 {
-    "name": "benchmark_all",
+    "name": "benchmark_learnMSA",
     "tools": {
       "learnMSA" : {
         "command": "conda run -n learnMSA_env learnMSA",
@@ -30,7 +30,6 @@
       }
     },
     "data_path": "data/homfam",
-    "cpu_partition": "",
-    "gpu_partition": "",
+    "use_gpu": 1,
     "align_threads": 32
 }

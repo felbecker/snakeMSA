@@ -9,6 +9,5 @@
         }
       },
     "data_path": "data/example_dataset",
-    "cpu_partition": "",
-    "gpu_partition": ""
+    "use_gpu": 0
 }

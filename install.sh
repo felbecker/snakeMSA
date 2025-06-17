@@ -17,7 +17,3 @@ for file in envs/*.yaml; do
         }
     fi
 done
-
-# additional install required to align with pLM support
-conda activate learnMSA_env && pip install torch==2.2.1 tf-keras==2.17.0
-conda deactivate
