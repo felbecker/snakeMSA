@@ -16,4 +16,5 @@ configs/*
 !configs/benchmark_all.json
 !configs/benchmark_learnMSA.json
 !data/benchmark_all.json
-
+profiles/
+slurm/
