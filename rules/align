@@ -42,14 +42,15 @@ rule align:
         stdout, stderr= p.communicate()
 
         print(stderr.decode(), file=sys.stderr)
+    
+        with open(log[0], "w") as log_file:
+            print(stdout.decode(), file=log_file)
 
-        if (os.path.exists(output[0]) 
+        if not (
+            os.path.exists(output[0]) 
             and p.returncode == 0
-            and not os.path.getsize(output[0]) == 0):
-            # everything is ok
-           with open(log[0], "w") as log_file:
-                print(stdout.decode(), file=log_file)
-        else:
+            and not os.path.getsize(output[0]) == 0
+        ):
             # something went wrong
             # create the output file to make subsequent rules still run,
             # but make clear that the output file is invalid
