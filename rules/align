@@ -8,7 +8,7 @@ rule align:
     resources:
         mem_mb = config["align_mem"] if "align_mem" in config else 64000, 
         gpu = lambda _: 1 if config["use_gpu"] else 0,
-        runtime = "1d"
+        runtime = config["align_runtime"] if "align_runtime" in config else "1d"
     log:
         "outputs/"+config["name"]+"/{tool}/logs/{sample}.log"
     benchmark:
