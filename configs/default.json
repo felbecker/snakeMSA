@@ -9,5 +9,6 @@
         }
       },
     "data_path": "data/example_dataset",
-    "use_gpu": 0
+    "use_gpu": 0,
+    "align_mem": 16000
 }

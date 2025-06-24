@@ -6,7 +6,7 @@ rule align:
         "outputs/"+config["name"]+"/{tool}/alignments/{sample}"
     threads: config["align_threads"] if "align_threads" in config else 8
     resources:
-        mem_mb = 64000, 
+        mem_mb = config["align_mem"] if "align_mem" in config else 64000, 
         gpu = lambda _: 1 if config["use_gpu"] else 0,
         runtime = "1d"
     log:

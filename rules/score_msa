@@ -9,8 +9,8 @@ rule score_msa:
         score = "outputs/"+config["name"]+"/{tool}/scores/{sample}.score"
     threads: 8
     resources:
-        mem_mb = 16000,
-        runtime = "30m"
+        mem_mb = config["score_mem"] if "score_mem" in config else 16000,
+        runtime = "120m"
     run:
         msa_failed = False
         with open(input.est, "r") as est_file:
