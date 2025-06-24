@@ -1,0 +1,35 @@
+{
+    "name": "all_huge",
+    "tools": {
+      "famsa" : {
+        "command": "conda run -n famsa_env famsa",
+        "params": [
+          "-t {threads}",
+          "{input}",
+          "{output}"
+        ]
+      },
+      "kalign" : {
+        "command": "conda run -n kalign_env kalign",
+        "params": [
+          "-n {threads}",
+          "-i {input}",
+          "-o {output}"
+        ]
+      },
+      "muscle" : {
+        "command": "conda run -n muscle_env muscle",
+        "params": [
+          "-super5",
+          "{input}",
+          "-output {output}"
+        ]
+      }
+    },
+    "data_path": "data/ext_homfam/ext_homfam_huge",
+    "use_gpu": 0,
+    "align_threads": 32,
+    "align_mem": 256000,
+    "score_mem": 1024000,
+    "align_runtime": "3d"
+}

@@ -13,8 +13,9 @@ data/*
 !data/homfam/get_homfam.sh
 configs/*
 !configs/default.json
-!configs/benchmark_all.json
-!configs/benchmark_learnMSA.json
-!data/benchmark_all.json
+!configs/all.json
+!configs/learnMSA.json
+!configs/all_huge.json
+!configs/learnMSA_huge.json
 profiles/
 slurm/

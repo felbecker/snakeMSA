@@ -2,13 +2,18 @@
     "name": "default",
     "tools": {
       "learnMSA" : {
-        "command": "python /home/felix/src/learnMSA/learnMSA.py",
-        "params": {
-          "-n": 5
-            }
+        "command": "conda run --live-stream -n learnMSA_env learnMSA",
+        "params": [
+          "-i {input}",
+          "-o {output}",
+          "--cluster_dir {workdir}"
+        ]
         }
       },
     "data_path": "data/example_dataset",
     "use_gpu": 0,
-    "align_mem": 16000
+    "align_threads": 16,
+    "align_mem": 16000,
+    "score_mem": 16000,
+    "align_runtime": "2h"
 }

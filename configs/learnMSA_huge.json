@@ -1,0 +1,29 @@
+{
+    "name": "learnMSA_huge",
+    "tools": {
+      "learnMSA" : {
+        "command": "conda run --live-stream -n learnMSA_env python ../learnMSA/learnMSA.py",
+        "params": [
+          "-i {input}",
+          "-o {output}",
+          "-n 10",
+          "--cluster_dir {workdir}"
+        ]
+      },
+      "learnMSA2" : {
+          "command": "conda run --live-stream -n learnMSA_env python ../learnMSA/learnMSA.py",
+          "params": [
+            "-i {input}",
+            "-o {output}",
+            "-n 4",
+            "--use_language_model",
+            "--cluster_dir {workdir}"
+          ]
+      }
+    },
+    "data_path": "data/ext_homfam/ext_homfam_huge",
+    "use_gpu": 1,
+    "align_threads": 32,
+    "align_mem": 128000,
+    "score_mem": 256000
+}
