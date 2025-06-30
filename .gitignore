@@ -8,8 +8,16 @@ dist/
 tmp/
 outputs*/
 results*/
+# Ignore everything under data/
 data/*
+# Allow directory traversal into these subfolders
+!data/homfam/
+!data/ext_homfam/
 !data/example_dataset
+# Ignore everything else inside these subfolders
+data/homfam/*
+data/ext_homfam/*
+# Allow only the specific files
 !data/homfam/get_homfam.sh
 !data/ext_homfam/get_ext_homfam.sh
 !data/ext_homfam/uniquify.py
