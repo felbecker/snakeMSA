@@ -21,7 +21,7 @@ The HomFam collection can be downloaded via:
 
 The extended HomFam collection [2] can be downloaded via:
 
-`chmod +x ./data/ext_homfam/get_ext_homfam.sh ; ./data/ext_homfam/get_ext_homfam.sh`
+`cd data/ext_homfam && chmod +x ./get_ext_homfam.sh && ./get_ext_homfam.sh`
 
 
 ## Run on custom data
