@@ -11,6 +11,8 @@ results*/
 data/*
 !data/example_dataset
 !data/homfam/get_homfam.sh
+!data/ext_homfam/get_ext_homfam.sh
+!data/ext_homfam/uniquify.py
 configs/*
 !configs/default.json
 !configs/all.json
