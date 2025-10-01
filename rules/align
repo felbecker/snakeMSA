@@ -10,7 +10,8 @@ rule align:
         gpu = lambda _: 1 if config["use_gpu"] else 0,
         runtime = config["align_runtime"] if "align_runtime" in config else "1d"
     log:
-        "outputs/"+config["name"]+"/{tool}/logs/{sample}.log"
+        stdout="outputs/"+config["name"]+"/{tool}/logs/{sample}.log",
+        stderr="outputs/"+config["name"]+"/{tool}/logs/{sample}.err",
     benchmark:
         "outputs/"+config["name"]+"/{tool}/benchmarks/{sample}.txt"
     params:
@@ -41,9 +42,10 @@ rule align:
         )
         stdout, stderr= p.communicate()
 
-        print(stderr.decode(), file=sys.stderr)
+        with open(log.stderr, "w") as err_file:
+            print(stderr.decode(), file=err_file)
     
-        with open(log[0], "w") as log_file:
+        with open(log.stdout, "w") as log_file:
             print(stdout.decode(), file=log_file)
 
         if not (
