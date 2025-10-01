@@ -91,7 +91,10 @@ To generate data for the size scaling experiment from the learnMSA2 paper, run:
 
 Use the regular pipeline to align `data/size_scaling_homfam_huge`.
 
-Then run the pipeline on the generated collection:
+Then run the pipeline on the generated collection.
+
+## References
 
 [1] Becker, F., & Stanke, M. (2024). learnMSA2: deep protein multiple alignments with large language and hidden Markov models. Bioinformatics, 40(Supplement_2), ii79-ii86.
+
 [2] Deorowicz, S., Debudaj-Grabysz, A., & Gudyś, A. (2016). FAMSA: Fast and accurate multiple sequence alignment of huge protein families. Scientific reports, 6(1), 33964.
