@@ -1,11 +1,13 @@
 import argparse
+
+import numpy as np
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-import numpy as np
 
-def main():
-    parser = argparse.ArgumentParser(
+
+def main() -> None:
+    parser = argparse.ArgumentParser( 
         description="Project MSA based on reference IDs."
     )
     parser.add_argument(

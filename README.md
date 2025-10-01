@@ -71,6 +71,27 @@ Please note: by default, learnMSA expects a GPU partition (and we recommend to u
 
 Job resources can be customized in the configuration file. See `configs/default.json`.
 
+## Specific experiments
+
+### Size scaling
+
+This experiment explores how alignment accuracy behaves relative to sequence count.
+We provide a script called `make_nested_sets.py` that takes an existing benchmark collection as well as a list of 
+sequence counts `L`.
+It will only consider unaligned datasets in the benchmark collection with have at least as many sequences as the maximum number in the provided list.
+It also assumes that the number of sequences in each reference alignment is at most the minimum number in the provided list.
+The script will randomly sample `n` series of nested datasets per dataset in the original collection with the following properties:
+- Dataset `i` in the series has `L[i]` sequences.
+- All datasets in a series contain the reference sequences.
+- Each datasets in a series contains the preceeding dataset with less sequences as a subset.
+
+To generate data for the size scaling experiment from the learnMSA2 paper, run:
+
+`conda run -n learnMSA_env python tools/make_nested_sets.py --benchmark data/ext_homfam/ext_homfam_huge --length 1e3 1e4 5e4 1e5 2.5e5 --n_series 4 --prefix data/size_scaling_homfam_huge`
+
+Use the regular pipeline to align `data/size_scaling_homfam_huge`.
+
+Then run the pipeline on the generated collection:
 
 [1] Becker, F., & Stanke, M. (2024). learnMSA2: deep protein multiple alignments with large language and hidden Markov models. Bioinformatics, 40(Supplement_2), ii79-ii86.
 [2] Deorowicz, S., Debudaj-Grabysz, A., & Gudyś, A. (2016). FAMSA: Fast and accurate multiple sequence alignment of huge protein families. Scientific reports, 6(1), 33964.
