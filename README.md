@@ -93,6 +93,12 @@ Use the regular pipeline to align `data/size_scaling_homfam_huge`.
 
 Then run the pipeline on the generated collection.
 
+Run 
+
+`conda run -n snakeMSA_base_env python tools/summarize_size_scaling.py -i <your results file1> <your results file2> (...)` 
+
+to summarize one or more size scaling result file(s).
+
 ## References
 
 [1] Becker, F., & Stanke, M. (2024). learnMSA2: deep protein multiple alignments with large language and hidden Markov models. Bioinformatics, 40(Supplement_2), ii79-ii86.
