@@ -5,12 +5,14 @@ import numpy as np
 import pandas as pd
 
 
-argparser = argparse.ArgumentParser(description='Summarize the results of one or more runs.')
-argparser.add_argument('-i', nargs='+', type=str, required=True, help='One or more run names.')
+argparser = argparse.ArgumentParser(
+    description="Summarize the results of one or more runs."
+)
+argparser.add_argument(
+    '-i', nargs='+', type=str, required=True, help="One or more run names."
+)
 
 args = argparser.parse_args()
-
-
 
 def validate_run_names(run_names):
     """
@@ -65,6 +67,10 @@ if __name__ == '__main__':
 
     df = make_merged_df(args.i, common_tools)
 
-    print(df.groupby(["run_name", "tool"])[["SP-Score", "TC", "s", "success"]].mean())
+    print(
+        df.groupby(["run_name", "tool"])[["SP-Score", "TC", "s", "success"]].mean()
+    )
     print("Total:")
-    print(df.groupby(["tool"])[["SP-Score", "TC", "s", "success"]].mean())
+    print(
+        df.groupby(["tool"])[["SP-Score", "TC", "s", "success"]].mean()
+    )
