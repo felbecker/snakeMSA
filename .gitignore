@@ -13,20 +13,10 @@ data/*
 # Allow directory traversal into these subfolders
 !data/homfam/
 !data/ext_homfam/
-!data/ext_homfam/ext_homfam_huge/
-!data/ext_homfam/ext_homfam_large/
-!data/ext_homfam/ext_homfam_medium/
-!data/ext_homfam/ext_homfam_small/
-!data/ext_homfam/ext_homfam_xlarge/
 !data/example_dataset/
 # Ignore everything else inside these subfolders
 data/homfam/*
 data/ext_homfam/*
-data/ext_homfam/ext_homfam_huge/*
-data/ext_homfam/ext_homfam_large/*
-data/ext_homfam/ext_homfam_medium/*
-data/ext_homfam/ext_homfam_small/*
-data/ext_homfam/ext_homfam_xlarge/*
 # Allow only the specific files
 !data/homfam/get_homfam.sh
 !data/ext_homfam/get_ext_homfam.sh

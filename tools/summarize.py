@@ -1,6 +1,7 @@
 import argparse 
 import os
 import json
+from typing import List, Set
 import numpy as np
 import pandas as pd
 
@@ -14,7 +15,7 @@ argparser.add_argument(
 
 args = argparser.parse_args()
 
-def validate_run_names(run_names):
+def validate_run_names(run_names: List[str]) -> None:
     """
     Validate the run names by checking if they exist.
     """
@@ -24,21 +25,21 @@ def validate_run_names(run_names):
             raise ValueError(f"Run {run} does not exist.")
 
 
-def find_tool_insersection(run_names):
+def find_tool_insersection(run_names: List[str]) -> Set[str]:
     """
     Find the common tools in the given run names.
     """
-    tools = None
+    tools: Set[str] | None = None
     for run in run_names:
         config_path = os.path.join("configs", run+".json")
         with open(config_path) as json_data:
             config = json.load(json_data)
             run_tools = config["tools"].keys()
             tools = tools.intersection(run_tools) if tools else set(run_tools)
-    return tools
+    return tools if tools is not None else set()
 
 
-def make_merged_df(run_names, tools):
+def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
     # Create an empty list to store the dataframes
     dfs = []
 
@@ -68,7 +69,9 @@ if __name__ == '__main__':
     df = make_merged_df(args.i, common_tools)
 
     print(
-        df.groupby(["run_name", "tool"])[["SP-Score", "TC", "s", "success"]].mean()
+        df.groupby(
+            ["run_name", "tool"]
+        )[["SP-Score", "TC", "s", "success"]].mean()
     )
     print("Total:")
     print(
