@@ -11,6 +11,9 @@ rule score_msa:
     resources:
         mem_mb = config["score_mem"] if "score_mem" in config else 16000,
         runtime = "120m"
+    log:
+        stdout="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.log",
+        stderr="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.err",
     run:
         msa_failed = False
         with open(input.est, "r") as est_file:
@@ -19,6 +22,10 @@ rule score_msa:
 
         # strip the extension from the sample name
         sample_name = os.path.basename(wildcards.sample).rsplit('.', 1)[0]
+
+        # Create folders if they do not exist
+        os.makedirs(os.path.dirname(output.proj), exist_ok=True)
+        os.makedirs(os.path.dirname(output.score), exist_ok=True)
 
         if not msa_failed:
 
