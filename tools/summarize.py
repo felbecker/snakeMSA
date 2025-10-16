@@ -12,6 +12,9 @@ argparser = argparse.ArgumentParser(
 argparser.add_argument(
     '-i', nargs='+', type=str, required=True, help="One or more run names."
 )
+argparser.add_argument(
+    '--detailed', action='store_true', help="Show all scores instead of just means."
+)
 
 args = argparser.parse_args()
 
@@ -68,12 +71,16 @@ if __name__ == '__main__':
 
     df = make_merged_df(args.i, common_tools)
 
-    print(
-        df.groupby(
-            ["run_name", "tool"]
-        )[["SP-Score", "TC", "s", "success"]].mean()
-    )
-    print("Total:")
-    print(
-        df.groupby(["tool"])[["SP-Score", "TC", "s", "success"]].mean()
-    )
+    if args.detailed:
+        df_sorted = df.sort_values(by="TC", ascending=False)
+        print(df_sorted[["run_name", "tool", "sample", "SP-Score", "TC", "s", "success"]].to_string(index=False))
+    else:
+        print(
+            df.groupby(
+                ["run_name", "tool"]
+            )[["SP-Score", "TC", "s", "success"]].mean()
+        )
+        print("Total:")
+        print(
+            df.groupby(["tool"])[["SP-Score", "TC", "s", "success"]].mean()
+        )
