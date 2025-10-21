@@ -1,29 +1,55 @@
-import argparse 
+import argparse
 import os
 import json
 from typing import List, Set
 import numpy as np
 import pandas as pd
+import glob
 
 
 argparser = argparse.ArgumentParser(
     description="Summarize the results of one or more runs."
 )
 argparser.add_argument(
-    '-i', nargs='+', type=str, required=True, help="One or more run names."
+    '-i', nargs='+', type=str, required=True,
+    help="One or more run names (supports wildcards with *)."
 )
 argparser.add_argument(
-    '--detailed', action='store_true', help="Show all scores instead of just means."
+    '--detailed', action='store_true',
+    help="Show all scores instead of just means."
 )
 
 args = argparser.parse_args()
+
+def expand_run_patterns(patterns: List[str]) -> List[str]:
+    """
+    Expand wildcard patterns in run names to actual run names.
+    For example, 'benchmark_*' will expand to all runs starting with 'benchmark_'.
+    """
+    expanded_runs = []
+    for pattern in patterns:
+        if '*' in pattern:
+            # Find matching config files
+            config_pattern = os.path.join("configs", pattern + ".json")
+            matching_configs = glob.glob(config_pattern)
+
+            # Extract run names from config file paths
+            for config_path in matching_configs:
+                run_name = os.path.basename(config_path)[:-5]  # Remove .json
+                # Check if corresponding results directory exists
+                if os.path.exists(os.path.join("results", run_name)):
+                    expanded_runs.append(run_name)
+        else:
+            expanded_runs.append(pattern)
+
+    return expanded_runs
 
 def validate_run_names(run_names: List[str]) -> None:
     """
     Validate the run names by checking if they exist.
     """
     for run in run_names:
-        if (not os.path.exists("results/"+run) 
+        if (not os.path.exists("results/"+run)
             or not os.path.exists(os.path.join("configs", run+".json"))):
             raise ValueError(f"Run {run} does not exist.")
 
@@ -65,11 +91,19 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
 
 
 if __name__ == '__main__':
-    validate_run_names(args.i)
+    # Expand wildcard patterns in run names
+    run_names = expand_run_patterns(args.i)
+    
+    if not run_names:
+        raise ValueError("No matching runs found for the given patterns.")
+    
+    print(f"Processing {len(run_names)} run(s): {', '.join(run_names)}")
+    
+    validate_run_names(run_names)
 
-    common_tools = find_tool_insersection(args.i)
+    common_tools = find_tool_insersection(run_names)
 
-    df = make_merged_df(args.i, common_tools)
+    df = make_merged_df(run_names, common_tools)
 
     if args.detailed:
         df_sorted = df.sort_values(by="TC", ascending=False)
