@@ -146,7 +146,7 @@ if __name__ == '__main__':
 
     elif args.detailed:
         df_sorted = df.sort_values(by="TC", ascending=False)
-        print(df_sorted[["run_name", "tool", "sample", "SP-Score", "TC", "s", "success"]].to_string(index=False))
+        print(df_sorted[["run_name", "tool", "sample", "SP-Score", "TC", "s", "h:m:s", "success"]].to_string(index=False))
     else:
         print(
             df.groupby(
