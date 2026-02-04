@@ -18,6 +18,10 @@ argparser.add_argument(
     '--detailed', action='store_true',
     help="Show all scores instead of just means."
 )
+argparser.add_argument(
+    '--compare', action='store_true',
+    help="Compare exactly two runs and show SP-Score and TC differences per sample."
+)
 
 args = argparser.parse_args()
 
@@ -93,19 +97,54 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
 if __name__ == '__main__':
     # Expand wildcard patterns in run names
     run_names = expand_run_patterns(args.i)
-    
+
     if not run_names:
         raise ValueError("No matching runs found for the given patterns.")
-    
+
+    # Validate compare mode requires exactly 2 runs
+    if args.compare and len(run_names) != 2:
+        raise ValueError("--compare requires exactly 2 run names. Got {}".format(len(run_names)))
+
     print(f"Processing {len(run_names)} run(s): {', '.join(run_names)}")
-    
+
     validate_run_names(run_names)
 
     common_tools = find_tool_insersection(run_names)
 
     df = make_merged_df(run_names, common_tools)
 
-    if args.detailed:
+    if args.compare:
+        # Compare mode: show differences between two runs
+        run1_name, run2_name = run_names[0], run_names[1]
+
+        # Separate data for each run
+        df1 = df[df["run_name"] == run1_name].copy()
+        df2 = df[df["run_name"] == run2_name].copy()
+
+        # Merge on tool and sample to compute differences
+        merged = pd.merge(
+            df1, df2,
+            on=["tool", "sample"],
+            suffixes=(f"_{run1_name}", f"_{run2_name}")
+        )
+
+        # Compute differences (run2 - run1)
+        merged["SP-Score_diff"] = merged[f"SP-Score_{run2_name}"] - merged[f"SP-Score_{run1_name}"]
+        merged["TC_diff"] = merged[f"TC_{run2_name}"] - merged[f"TC_{run1_name}"]
+
+        # Sort by TC difference (descending)
+        merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
+
+        # Display results
+        print(f"\nComparison: {run2_name} vs {run1_name}")
+        print(f"Positive differences indicate {run2_name} performed better\n")
+        print(merged_sorted[["tool", "sample", "SP-Score_diff", "TC_diff"]].to_string(index=False))
+
+        # Print summary statistics
+        print("\nSummary (mean differences by tool):")
+        print(merged.groupby(["tool"])[["SP-Score_diff", "TC_diff"]].mean())
+
+    elif args.detailed:
         df_sorted = df.sort_values(by="TC", ascending=False)
         print(df_sorted[["run_name", "tool", "sample", "SP-Score", "TC", "s", "success"]].to_string(index=False))
     else:
