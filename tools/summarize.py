@@ -131,18 +131,19 @@ if __name__ == '__main__':
         # Compute differences (run2 - run1)
         merged["SP-Score_diff"] = merged[f"SP-Score_{run2_name}"] - merged[f"SP-Score_{run1_name}"]
         merged["TC_diff"] = merged[f"TC_{run2_name}"] - merged[f"TC_{run1_name}"]
+        merged["runtime_diff"] = merged[f"s_{run2_name}"] - merged[f"s_{run1_name}"]
 
         # Sort by TC difference (descending)
         merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
 
         # Display results
         print(f"\nComparison: {run2_name} vs {run1_name}")
-        print(f"Positive differences indicate {run2_name} performed better\n")
-        print(merged_sorted[["tool", "sample", "SP-Score_diff", "TC_diff"]].to_string(index=False))
+        print(f"Positive differences indicate {run2_name} performed better (except runtime)\n")
+        print(merged_sorted[["tool", "sample", "SP-Score_diff", "TC_diff", "runtime_diff"]].to_string(index=False))
 
         # Print summary statistics
         print("\nSummary (mean differences by tool):")
-        print(merged.groupby(["tool"])[["SP-Score_diff", "TC_diff"]].mean())
+        print(merged.groupby(["tool"])[["SP-Score_diff", "TC_diff", "runtime_diff"]].mean())
 
     elif args.detailed:
         df_sorted = df.sort_values(by="TC", ascending=False)
