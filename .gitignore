@@ -19,6 +19,7 @@ data/homfam/*
 data/ext_homfam/*
 # Allow only the specific files
 !data/homfam/get_homfam.sh
+!data/homfam/predict3di.sh
 !data/ext_homfam/get_ext_homfam.sh
 !data/ext_homfam/uniquify.py
 configs/*
