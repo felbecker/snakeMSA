@@ -7,7 +7,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
-from learnMSA.msa_hmm.SequenceDataset import SequenceDataset
+from learnMSA.util import SequenceDataset
 
 argparser = argparse.ArgumentParser(
     description="Show statistics for FASTA files in a directory."
@@ -23,6 +23,9 @@ argparser.add_argument(
 argparser.add_argument(
     '--detailed', action='store_true',
     help="Show per-sequence statistics instead of just summaries."
+)
+argparser.add_argument(
+    '--alphabet', type=str, default=SequenceDataset._default_alphabet,
 )
 
 args = argparser.parse_args()
@@ -62,7 +65,12 @@ def analyze_dataset(filepath: Path) -> dict:
         Dictionary containing statistics about the dataset.
     """
     try:
-        dataset = SequenceDataset(filepath=filepath, fmt="fasta")
+        dataset = SequenceDataset(
+            filepath=filepath,
+            fmt="fasta",
+            alphabet=args.alphabet,
+            replace_with_x="",
+        )
 
         stats = {
             "file": filepath.name,
@@ -71,6 +79,7 @@ def analyze_dataset(filepath: Path) -> dict:
             "avg_length": float(np.mean(dataset.seq_lens)) if len(dataset) > 0 else 0.0,
             "max_length": int(np.max(dataset.seq_lens)) if len(dataset) > 0 else 0,
             "total_residues": int(np.sum(dataset.seq_lens)),
+            "profile": dataset.get_profile(),
             "std_length": float(np.std(dataset.seq_lens)) if len(dataset) > 0 else 0.0,
         }
 
@@ -78,6 +87,7 @@ def analyze_dataset(filepath: Path) -> dict:
         return stats
 
     except Exception as e:
+        print(f"Error analyzing {filepath.name}: {e}", file=sys.stderr)
         return {
             "file": filepath.name,
             "num_sequences": 0,
@@ -87,6 +97,7 @@ def analyze_dataset(filepath: Path) -> dict:
             "total_residues": 0,
             "std_length": 0.0,
             "error": str(e),
+            "profile": np.zeros(len(args.alphabet)),
         }
 
 
@@ -111,6 +122,35 @@ def make_statistics_df(files: List[Path]) -> pd.DataFrame:
     return df
 
 
+def expand_profile_columns(df: pd.DataFrame, alphabet: str) -> pd.DataFrame:
+    """Expand the 'profile' column into per-character frequency columns."""
+    profile_df = pd.DataFrame(
+        np.stack(df['profile'].values), # type: ignore
+        columns=[f"freq_{c}" for c in alphabet],
+        index=df.index,
+    )
+    return pd.concat([df.drop(columns=['profile']), profile_df], axis=1)
+
+
+def compute_overall_profile(df: pd.DataFrame) -> np.ndarray:
+    """Compute weighted mean profile across all datasets (weighted by total residues)."""
+    profiles = np.stack(df['profile'].values) # type: ignore
+    weights = df['total_residues'].values.astype(float)
+    if weights.sum() == 0: # type: ignore
+        return profiles.mean(axis=0)
+    return np.average(profiles, weights=weights, axis=0)
+
+
+def print_profile(profile: np.ndarray, alphabet: str, indent: str = "  ") -> None:
+    """Print a profile as a formatted two-row table (characters + frequencies)."""
+    cols = 10
+    for i in range(0, len(alphabet), cols):
+        chars = alphabet[i:i + cols]
+        freqs = profile[i:i + cols]
+        print(indent + "  ".join(f"{c:>6}" for c in chars))
+        print(indent + "  ".join(f"{v:6.4f}" for v in freqs))
+
+
 if __name__ == '__main__':
     # Find FASTA files
     if not os.path.exists(args.input):
@@ -131,21 +171,24 @@ if __name__ == '__main__':
 
     # Display results
     if args.detailed:
-        # Show all statistics for each file
-        print(df.to_string(index=False))
+        # Expand profile into per-character columns and show all statistics
+        display_df = expand_profile_columns(df, args.alphabet)
+        print(display_df.to_string(index=False))
     else:
         # Show summary statistics
         print(df[["file", "num_sequences", "min_length", "avg_length", "max_length"]].to_string(index=False))
 
-        # Show overall statistics if multiple files
-        if len(fasta_files) > 1:
-            print("\n" + "="*80)
-            print("OVERALL STATISTICS:")
-            print("="*80)
-            print(f"Total files:           {len(fasta_files)}")
-            print(f"Total sequences:       {df['num_sequences'].sum()}")
-            print(f"Total residues:        {df['total_residues'].sum()}")
-            print(f"Average sequences/file: {df['num_sequences'].mean():.2f}")
-            print(f"Min sequence length:   {df['min_length'].min()}")
-            print(f"Max sequence length:   {df['max_length'].max()}")
-            print(f"Overall avg length:    {df['avg_length'].mean():.2f}")
+        # Show overall statistics
+        print("\n" + "="*80)
+        print("OVERALL STATISTICS:")
+        print("="*80)
+        print(f"Total files:           {len(fasta_files)}")
+        print(f"Total sequences:       {df['num_sequences'].sum()}")
+        print(f"Total residues:        {df['total_residues'].sum()}")
+        print(f"Average sequences/file: {df['num_sequences'].mean():.2f}")
+        print(f"Min sequence length:   {df['min_length'].min()}")
+        print(f"Max sequence length:   {df['max_length'].max()}")
+        print(f"Overall avg length:    {df['avg_length'].mean():.2f}")
+        print("\nOverall profile (weighted mean by residue count):")
+        overall_profile = compute_overall_profile(df)
+        print_profile(overall_profile, args.alphabet)
