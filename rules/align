@@ -17,6 +17,8 @@ rule align:
     params:
         workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
         tree="outputs/"+config["name"]+"/{tool}/trees/{sample}/",
+        struct=lambda wildcards: (config["data_path"]+"/3di/"
+            +os.path.splitext(wildcards.sample)[0]+".fasta")
     run:
         tool_command=config["tools"][wildcards.tool]["command"]
         argstring = parse_cmd_args(config["tools"][wildcards.tool]["params"])
@@ -26,7 +28,8 @@ rule align:
             output=output,
             threads=threads,
             workdir=params.workdir,
-            tree=params.tree
+            tree=params.tree,
+            struct=params.struct
         )
 
         print("Running command: ", cmd)
