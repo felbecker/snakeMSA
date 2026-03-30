@@ -22,6 +22,11 @@ argparser.add_argument(
     '--compare', action='store_true',
     help="Compare exactly two runs and show SP-Score and TC differences per sample."
 )
+argparser.add_argument(
+    '--all', action='store_true',
+    help="When multiple run names are given, shows all tools of all runs."\
+    " Per default, only the intersection of tools is shown."
+)
 
 args = argparser.parse_args()
 
@@ -58,7 +63,7 @@ def validate_run_names(run_names: List[str]) -> None:
             raise ValueError(f"Run {run} does not exist.")
 
 
-def find_tool_insersection(run_names: List[str]) -> Set[str]:
+def find_tools(run_names: List[str], intersection: bool) -> Set[str]:
     """
     Find the common tools in the given run names.
     """
@@ -68,7 +73,10 @@ def find_tool_insersection(run_names: List[str]) -> Set[str]:
         with open(config_path) as json_data:
             config = json.load(json_data)
             run_tools = config["tools"].keys()
-            tools = tools.intersection(run_tools) if tools else set(run_tools)
+            if intersection:
+                tools = tools.intersection(run_tools) if tools else set(run_tools)
+            else:
+                tools = tools.union(run_tools) if tools else set(run_tools)
     return tools if tools is not None else set()
 
 
@@ -79,8 +87,10 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
     # Read each file and append its contents to the list
     for run_name in run_names:
         for i,tool in enumerate(tools):
-            print(tool)
             filename = f"results/{run_name}/{tool}.out"
+            if not os.path.isfile(filename):
+                continue
+            print(tool)
             df = pd.read_csv(filename, index_col=False, sep=' ')
             df["tool"] = tool
             df["run_name"] = run_name
@@ -109,7 +119,7 @@ if __name__ == '__main__':
 
     validate_run_names(run_names)
 
-    common_tools = find_tool_insersection(run_names)
+    common_tools = find_tools(run_names, not args.all)
 
     df = make_merged_df(run_names, common_tools)
 
