@@ -23,6 +23,11 @@ argparser.add_argument(
     help="Compare exactly two runs and show SP-Score and TC differences per sample."
 )
 argparser.add_argument(
+    '--compare-tools', nargs=2, type=str, metavar=('TOOL1', 'TOOL2'),
+    help="Compare exactly two tools within the same run(s) and show SP-Score "
+    "and TC differences per sample."
+)
+argparser.add_argument(
     '--all', action='store_true',
     help="When multiple run names are given, shows all tools of all runs."\
     " Per default, only the intersection of tools is shown."
@@ -115,15 +120,54 @@ if __name__ == '__main__':
     if args.compare and len(run_names) != 2:
         raise ValueError("--compare requires exactly 2 run names. Got {}".format(len(run_names)))
 
+    if args.compare and args.compare_tools:
+        raise ValueError("--compare and --compare-tools are mutually exclusive.")
+
     print(f"Processing {len(run_names)} run(s): {', '.join(run_names)}")
 
     validate_run_names(run_names)
 
     common_tools = find_tools(run_names, not args.all)
 
+    if args.compare_tools:
+        tool1, tool2 = args.compare_tools
+        for t in [tool1, tool2]:
+            if t not in common_tools:
+                raise ValueError(f"Tool '{t}' not found in the given run(s). Available tools: {', '.join(sorted(common_tools))}")
+        common_tools = {tool1, tool2}
+
     df = make_merged_df(run_names, common_tools)
 
-    if args.compare:
+    if args.compare_tools:
+        tool1, tool2 = args.compare_tools
+
+        df1 = df[df["tool"] == tool1].copy()
+        df2 = df[df["tool"] == tool2].copy()
+
+        merged = pd.merge(
+            df1, df2,
+            on=["run_name", "sample"],
+            suffixes=(f"_{tool1}", f"_{tool2}")
+        )
+
+        merged["SP-Score_diff"] = merged[f"SP-Score_{tool2}"] - merged[f"SP-Score_{tool1}"]
+        merged["TC_diff"] = merged[f"TC_{tool2}"] - merged[f"TC_{tool1}"]
+        merged["runtime_diff"] = merged[f"s_{tool2}"] - merged[f"s_{tool1}"]
+
+        merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
+
+        print(f"\nComparison: {tool2} vs {tool1}")
+        print(f"Positive differences indicate {tool2} performed better (except runtime)\n")
+        print(merged_sorted[["run_name", "sample", "SP-Score_diff", "TC_diff", "runtime_diff"]].to_string(index=False))
+
+        print("\nSummary (mean differences by run):")
+        print(merged.groupby(["run_name"])[["SP-Score_diff", "TC_diff", "runtime_diff"]].mean())
+
+        if len(run_names) > 1:
+            print("\nTotal (mean differences):")
+            print(merged[["SP-Score_diff", "TC_diff", "runtime_diff"]].mean())
+
+    elif args.compare:
         # Compare mode: show differences between two runs
         run1_name, run2_name = run_names[0], run_names[1]
 
