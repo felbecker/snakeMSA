@@ -1,3 +1,6 @@
 [submodule "FastSP"]
 	path = FastSP
 	url = https://github.com/smirarab/FastSP
+[submodule "3DUtil"]
+	path = 3DUtil
+	url = https://github.com/felbecker/3DUtil
