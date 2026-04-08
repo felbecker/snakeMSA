@@ -32,6 +32,14 @@ argparser.add_argument(
     help="When multiple run names are given, shows all tools of all runs."\
     " Per default, only the intersection of tools is shown."
 )
+argparser.add_argument(
+    '--tools', nargs='+', type=str, metavar='TOOL',
+    help="Restrict output to this subset of tools (applies to all modes)."
+)
+argparser.add_argument(
+    '--barplots', action='store_true',
+    help="Create a bar plot (SP-Score, TC, runtime) for each run."
+)
 
 args = argparser.parse_args()
 
@@ -129,6 +137,15 @@ if __name__ == '__main__':
 
     common_tools = find_tools(run_names, not args.all)
 
+    # Apply --tools filter if specified
+    if args.tools:
+        unknown = set(args.tools) - common_tools
+        if unknown:
+            print(f"Warning: the following tools were not found in the run(s) and will be ignored: {', '.join(sorted(unknown))}")
+        common_tools = common_tools.intersection(set(args.tools))
+        if not common_tools:
+            raise ValueError("No matching tools remain after applying --tools filter.")
+
     if args.compare_tools:
         tool1, tool2 = args.compare_tools
         for t in [tool1, tool2]:
@@ -212,3 +229,15 @@ if __name__ == '__main__':
         print(
             df.groupby(["tool"])[["SP-Score", "TC", "s", "success"]].mean()
         )
+
+    if args.barplots:
+        from plots import barplot
+        tool_order = args.tools if args.tools else None
+        for run in run_names:
+            run_df = df[df["run_name"] == run]
+            barplot(
+                run_df,
+                run_name=run,
+                tools=tool_order,
+                output_path=f"{run}_barplot.png"
+            )
