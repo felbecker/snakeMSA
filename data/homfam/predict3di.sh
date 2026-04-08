@@ -8,7 +8,7 @@ for file in unaligned/*.vie; do
         continue
     fi
     echo "Processing $file"
-    python 3DUtil/predict3di.py \
+    python 3DUtil/make_3di.py \
     --fasta "$file" \
     --output "$output" \
     --prostt5-model "3DUtil/prostT5"

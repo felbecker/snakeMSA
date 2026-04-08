@@ -24,6 +24,8 @@ data/ext_homfam/*
 !data/homstrad/clean_homstrad.py
 !data/homfam/get_homfam.sh
 !data/homfam/predict3di.sh
+!data/homfam/merge3di.sh
+!data/homfam/find3di.sh
 !data/ext_homfam/get_ext_homfam.sh
 !data/ext_homfam/uniquify.py
 configs/*
