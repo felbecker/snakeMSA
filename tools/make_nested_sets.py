@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 import numpy as np
-from learnMSA.msa_hmm.SequenceDataset import SequenceDataset
+from learnMSA.legacy.SequenceDataset import SequenceDataset
 
 
 def sample_subset(

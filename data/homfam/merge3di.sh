@@ -15,13 +15,16 @@ for file in "$PREDICTED_3DI"/*.fasta; do
     family=$(basename "$file" .fasta)
     tmp=$(mktemp)
 
-    # Step 1: start from predicted_3di, override with pdb_3di
-    pdb_file="$PDB_3DI/$family.fasta"
-    if [ -f "$pdb_file" ]; then
-        python3 "$MERGE_FASTA" -i "$file" --override_fasta "$pdb_file" -o "$tmp"
-    else
-        cp "$file" "$tmp"
-    fi
+    # TODO: pdb_3di is currently broken because of unresolved residues
+    # # Step 1: start from predicted_3di, override with pdb_3di
+    # pdb_file="$PDB_3DI/$family.fasta"
+    # if [ -f "$pdb_file" ]; then
+    #     python3 "$MERGE_FASTA" -i "$file" --override_fasta "$pdb_file" -o "$tmp"
+    # else
+    #     cp "$file" "$tmp"
+    # fi
+
+    cp "$file" "$tmp"
 
     # Step 2: override result with homstrad/3Di
     homstrad_file="$HOMSTRAD_3DI/$family.fasta"
