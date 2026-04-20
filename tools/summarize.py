@@ -220,15 +220,16 @@ if __name__ == '__main__':
         df_sorted = df.sort_values(by="TC", ascending=False)
         print(df_sorted[["run_name", "tool", "sample", "SP-Score", "TC", "s", "h:m:s", "success"]].to_string(index=False))
     else:
-        print(
-            df.groupby(
-                ["run_name", "tool"]
-            )[["SP-Score", "TC", "s", "success"]].mean()
-        )
-        print("Total:")
-        print(
-            df.groupby(["tool"])[["SP-Score", "TC", "s", "success"]].mean()
-        )
+        with pd.option_context('display.max_columns', None, 'display.width', None):
+            print(
+                df.groupby(
+                    ["run_name", "tool"]
+                )[["SP-Score", "TC", "s", "success"]].mean()
+            )
+            print("Total:")
+            print(
+                df.groupby(["tool"])[["SP-Score", "TC", "s", "success"]].mean()
+            )
 
     if args.barplots:
         from plots import barplot
