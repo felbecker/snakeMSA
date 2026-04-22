@@ -18,8 +18,9 @@ rule align:
         workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
         tree="outputs/"+config["name"]+"/{tool}/trees/{sample}/",
         struct=lambda wildcards: (
-            config["data_path"] + "/" + config["struct_data"] + "/"
+            config["data_path"] + "/" + config.get("struct_data", "") + "/"
             + os.path.splitext(wildcards.sample)[0] + ".fasta"
+            if "struct_data" in config else ""
         )
     run:
         tool_command=config["tools"][wildcards.tool]["command"]
