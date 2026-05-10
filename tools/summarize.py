@@ -275,7 +275,7 @@ if __name__ == '__main__':
             )
             print(df_sorted[[
                 "run_name", "tool", "sample",
-                "num_seq", "max_len", "max_len", "avg_len", "pid",
+                "num_seq", "max_len", "avg_len", "pid",
                 "SP-Score", "TC", "s", "h:m:s", "success",
             ]].to_string(index=False))
         else:
