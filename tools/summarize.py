@@ -1,10 +1,15 @@
 import argparse
 import os
 import json
+import sys
+from pathlib import Path
 from typing import List, Set
 import numpy as np
 import pandas as pd
 import glob
+
+sys.path.insert(0, str(Path(__file__).parent))
+from data_stats import compute_stats
 
 
 argparser = argparse.ArgumentParser(
@@ -17,6 +22,10 @@ argparser.add_argument(
 argparser.add_argument(
     '--detailed', action='store_true',
     help="Show all scores instead of just means."
+)
+argparser.add_argument(
+    '--more_detailed', action='store_true',
+    help="Show memory used as well as dataset properties."
 )
 argparser.add_argument(
     '--compare', action='store_true',
@@ -216,9 +225,63 @@ if __name__ == '__main__':
         print("\nSummary (mean differences by tool):")
         print(merged.groupby(["tool"])[["SP-Score_diff", "TC_diff", "runtime_diff"]].mean())
 
-    elif args.detailed:
+    elif args.detailed or args.more_detailed:
         df_sorted = df.sort_values(by="TC", ascending=False)
-        print(df_sorted[["run_name", "tool", "sample", "SP-Score", "TC", "s", "h:m:s", "success"]].to_string(index=False))
+        if args.more_detailed:
+            # Load or compute per-family dataset statistics and merge into df
+            stats_parts = []
+            for run in run_names:
+                config_path = os.path.join("configs", run + ".json")
+                with open(config_path) as fh:
+                    config = json.load(fh)
+                data_path = Path(config.get("data_path", ""))
+                tsv_unaligned = data_path / "statistics_unaligned.tsv"
+                tsv_aligned = data_path / "statistics_aligned.tsv"
+                if not tsv_unaligned.exists():
+                    print(
+                        f"Computing unaligned statistics for {run} ...",
+                        file=sys.stderr,
+                    )
+                    unaligned_dir = str(data_path / "unaligned")
+                    stats_u = compute_stats([unaligned_dir], aligned=False)
+                    stats_u.to_csv(tsv_unaligned, sep="\t", index=False)
+                else:
+                    stats_u = pd.read_csv(tsv_unaligned, sep="\t")
+                if not tsv_aligned.exists():
+                    print(
+                        f"Computing aligned statistics for {run} ...",
+                        file=sys.stderr,
+                    )
+                    aligned_dir = str(data_path / "aligned")
+                    stats_a = compute_stats([aligned_dir], aligned=True)
+                    stats_a.to_csv(tsv_aligned, sep="\t", index=False)
+                else:
+                    stats_a = pd.read_csv(tsv_aligned, sep="\t")
+                # Combine the columns we want from both TSVs
+                ds_stats = stats_u[["family", "num_seq", "max_len", "avg_len"]].merge(
+                    stats_a[["family", "avg_pairwise_identity"]],
+                    on="family",
+                    how="outer",
+                )
+                ds_stats = ds_stats.rename(columns={"family": "sample"})
+                ds_stats["run_name"] = run
+                stats_parts.append(ds_stats)
+            all_stats = pd.concat(stats_parts, ignore_index=True)
+            df_sorted = df_sorted.merge(
+                all_stats, on=["run_name", "sample"], how="left"
+            )
+            df_sorted.rename(
+                columns={"avg_pairwise_identity": "pid"}, inplace=True
+            )
+            print(df_sorted[[
+                "run_name", "tool", "sample",
+                "num_seq", "max_len", "max_len", "avg_len", "pid",
+                "SP-Score", "TC", "s", "h:m:s", "success",
+            ]].to_string(index=False))
+        else:
+            print(df_sorted[[
+                "run_name", "tool", "sample", "SP-Score", "TC", "s", "h:m:s", "max_rss", "success"
+            ]].to_string(index=False))
     else:
         with pd.option_context('display.max_columns', None, 'display.width', None):
             print(

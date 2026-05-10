@@ -10,6 +10,17 @@
 	    "--save_model"
         ]
       },
+	"learnMSA_mea" : {
+	    "command": "conda run --live-stream -n learnMSA_env python ../learnMSA/learnMSA.py",
+	    "params": [
+		"-i {input}",
+		"-o {output}",
+		"--work_dir {workdir}",
+		"--save_model",
+		"--pre_training_checkpoint",
+		"--decode mea"
+	    ]
+	},
 	"learnMSA_10" : {
 	    "command": "conda run --live-stream -n learnMSA_env python ../learnMSA/learnMSA.py",
 	    "params": [
@@ -53,6 +64,18 @@
 	      "--save_model"
           ]
       },
+	"learnMSA2_mea" : {
+	    "command": "conda run --live-stream -n learnMSA_env python ../learnMSA/learnMSA.py",
+	    "params": [
+		"-i {input}",
+		"-o {output}",
+		"--use_language_model",
+		"--work_dir {workdir}",
+		"--save_model",
+		"--pre_training_checkpoint",
+		"--decode mea"
+	    ]
+	},
 	"learnMSA2_iter1" : {
 	    "command": "conda run --live-stream -n learnMSA_env python ../learnMSA/learnMSA.py",
 	    "params": [
