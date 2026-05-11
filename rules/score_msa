@@ -85,7 +85,24 @@ rule concat_scores:
                 + " | awk '{{print $1}}' \
                     | tr '\n' ' ' >> {output}")
         shell("echo $(head -n 1 " + input.benchmarks[0] + ") >> {output}")
+
+        def normalize_line(line):
+            """Convert 'N day[s], h:m:s' to 'h:m:s' and replace tabs with spaces."""
+            import re
+            line = re.sub(
+                r'(\d+) days?,\s*(\d+):(\d+):(\d+)',
+                lambda m: f"{int(m.group(1)) * 24 + int(m.group(2))}:{m.group(3)}:{m.group(4)}",
+                line
+            )
+            return line.replace('\t', ' ')
+
         for s,b in zip(input.scores, input.benchmarks):
             #row by row for each sample, concatenate the scores and the second
-            # line of the benchmark file
-            shell("echo $(cat {s}) $(tail -n 1 {b}) >> {output}")
+            # line of the benchmark file, fixing any "N day[s], h:m:s" values
+            # and normalizing tabs to spaces
+            with open(b) as bf:
+                bench_line = normalize_line(bf.readlines()[1].strip())
+            with open(s) as sf:
+                score_line = sf.read().strip()
+            with open(output[0], 'a') as out:
+                out.write(f"{score_line} {bench_line}\n")

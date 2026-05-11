@@ -1,6 +1,8 @@
 import argparse
+import io
 import os
 import json
+import re
 import sys
 from pathlib import Path
 from typing import List, Set
@@ -113,7 +115,18 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
             if not os.path.isfile(filename):
                 continue
             print(tool)
-            df = pd.read_csv(filename, index_col=False, sep=' ')
+            with open(filename) as fh:
+                content = fh.read()
+            # Normalize "N day[s], h:m:s" → "total_h:m:s" so the
+            # whitespace-separated columns stay aligned, and replace tabs
+            # with spaces (Snakemake benchmark files use tab separators).
+            content = re.sub(
+                r'(\d+) days?,\s*(\d+):(\d+):(\d+)',
+                lambda m: f"{int(m.group(1)) * 24 + int(m.group(2))}:{m.group(3)}:{m.group(4)}",
+                content
+            )
+            content = content.replace('\t', ' ')
+            df = pd.read_csv(io.StringIO(content), index_col=False, sep=' ')
             df["tool"] = tool
             df["run_name"] = run_name
             #df = df.set_index(df.dataset + "_" + df.family)
@@ -144,54 +157,128 @@ if __name__ == '__main__':
 
     validate_run_names(run_names)
 
-    common_tools = find_tools(run_names, not args.all)
+    # Cross-run compare: exactly 2 runs + 2 tools → compare tool1 from run1 vs tool2 from run2
+    cross_run_compare = bool(args.compare_tools) and len(run_names) == 2
 
-    # Apply --tools filter if specified
-    if args.tools:
-        unknown = set(args.tools) - common_tools
-        if unknown:
-            print(f"Warning: the following tools were not found in the run(s) and will be ignored: {', '.join(sorted(unknown))}")
-        common_tools = common_tools.intersection(set(args.tools))
-        if not common_tools:
-            raise ValueError("No matching tools remain after applying --tools filter.")
-
-    if args.compare_tools:
+    if cross_run_compare:
         tool1, tool2 = args.compare_tools
-        for t in [tool1, tool2]:
-            if t not in common_tools:
-                raise ValueError(f"Tool '{t}' not found in the given run(s). Available tools: {', '.join(sorted(common_tools))}")
+        run1_tools = find_tools([run_names[0]], intersection=True)
+        run2_tools = find_tools([run_names[1]], intersection=True)
+        if tool1 not in run1_tools:
+            raise ValueError(
+                f"Tool '{tool1}' not found in run '{run_names[0]}'. "
+                f"Available: {', '.join(sorted(run1_tools))}"
+            )
+        if tool2 not in run2_tools:
+            raise ValueError(
+                f"Tool '{tool2}' not found in run '{run_names[1]}'. "
+                f"Available: {', '.join(sorted(run2_tools))}"
+            )
         common_tools = {tool1, tool2}
+    else:
+        common_tools = find_tools(run_names, not args.all)
+
+        # Apply --tools filter if specified
+        if args.tools:
+            unknown = set(args.tools) - common_tools
+            if unknown:
+                print(f"Warning: the following tools were not found in the run(s) and will be ignored: {', '.join(sorted(unknown))}")
+            common_tools = common_tools.intersection(set(args.tools))
+            if not common_tools:
+                raise ValueError("No matching tools remain after applying --tools filter.")
+
+        if args.compare_tools:
+            tool1, tool2 = args.compare_tools
+            for t in [tool1, tool2]:
+                if t not in common_tools:
+                    raise ValueError(f"Tool '{t}' not found in the given run(s). Available tools: {', '.join(sorted(common_tools))}")
+            common_tools = {tool1, tool2}
 
     df = make_merged_df(run_names, common_tools)
 
     if args.compare_tools:
         tool1, tool2 = args.compare_tools
 
-        df1 = df[df["tool"] == tool1].copy()
-        df2 = df[df["tool"] == tool2].copy()
+        if cross_run_compare:
+            run1_name, run2_name = run_names[0], run_names[1]
+            df1 = df[(df["tool"] == tool1) & (df["run_name"] == run1_name)].copy()
+            df2 = df[(df["tool"] == tool2) & (df["run_name"] == run2_name)].copy()
 
-        merged = pd.merge(
-            df1, df2,
-            on=["run_name", "sample"],
-            suffixes=(f"_{tool1}", f"_{tool2}")
-        )
+            merged = pd.merge(df1, df2, on=["sample"], suffixes=("_1", "_2"))
+            merged["SP-Score_diff"] = merged["SP-Score_2"] - merged["SP-Score_1"]
+            merged["TC_diff"] = merged["TC_2"] - merged["TC_1"]
+            merged["runtime_diff"] = merged["s_2"] - merged["s_1"]
 
-        merged["SP-Score_diff"] = merged[f"SP-Score_{tool2}"] - merged[f"SP-Score_{tool1}"]
-        merged["TC_diff"] = merged[f"TC_{tool2}"] - merged[f"TC_{tool1}"]
-        merged["runtime_diff"] = merged[f"s_{tool2}"] - merged[f"s_{tool1}"]
+            label1 = f"{tool1} ({run1_name})"
+            label2 = f"{tool2} ({run2_name})"
+            print(f"\nComparison: {label2} vs {label1}")
+            print(f"Positive differences indicate {label2} performed better (except runtime)\n")
 
-        merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
+            diff_cols = ["sample", "SP-Score_diff", "TC_diff", "runtime_diff"]
 
-        print(f"\nComparison: {tool2} vs {tool1}")
-        print(f"Positive differences indicate {tool2} performed better (except runtime)\n")
-        print(merged_sorted[["run_name", "sample", "SP-Score_diff", "TC_diff", "runtime_diff"]].to_string(index=False))
+            if args.more_detailed:
+                # Load dataset statistics from run1's config
+                config_path = os.path.join("configs", run1_name + ".json")
+                with open(config_path) as fh:
+                    config = json.load(fh)
+                data_path = Path(config.get("data_path", ""))
+                tsv_unaligned = data_path / "statistics_unaligned.tsv"
+                tsv_aligned = data_path / "statistics_aligned.tsv"
+                if tsv_unaligned.exists():
+                    stats_u = pd.read_csv(tsv_unaligned, sep="\t")
+                else:
+                    print(f"Computing unaligned statistics for {run1_name} ...", file=sys.stderr)
+                    stats_u = compute_stats([str(data_path / "unaligned")], aligned=False)
+                    stats_u.to_csv(tsv_unaligned, sep="\t", index=False)
+                if tsv_aligned.exists():
+                    stats_a = pd.read_csv(tsv_aligned, sep="\t")
+                else:
+                    print(f"Computing aligned statistics for {run1_name} ...", file=sys.stderr)
+                    stats_a = compute_stats([str(data_path / "aligned")], aligned=True)
+                    stats_a.to_csv(tsv_aligned, sep="\t", index=False)
+                ds_stats = stats_u[["family", "num_seq", "max_len", "avg_len"]].merge(
+                    stats_a[["family", "avg_pairwise_identity"]].rename(
+                        columns={"avg_pairwise_identity": "pid"}
+                    ),
+                    on="family", how="outer",
+                ).rename(columns={"family": "sample"})
+                merged = merged.merge(ds_stats, on="sample", how="left")
+                diff_cols = ["sample", "num_seq", "max_len", "avg_len", "pid",
+                             "SP-Score_diff", "TC_diff", "runtime_diff"]
 
-        print("\nSummary (mean differences by run):")
-        print(merged.groupby(["run_name"])[["SP-Score_diff", "TC_diff", "runtime_diff"]].mean())
+            if args.detailed or args.more_detailed:
+                merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
+                print(merged_sorted[diff_cols].to_string(index=False))
 
-        if len(run_names) > 1:
-            print("\nTotal (mean differences):")
-            print(merged[["SP-Score_diff", "TC_diff", "runtime_diff"]].mean())
+            print("\nSummary (mean differences):")
+            print(merged[["SP-Score_diff", "TC_diff", "runtime_diff"]].mean().to_string())
+
+        else:
+            df1 = df[df["tool"] == tool1].copy()
+            df2 = df[df["tool"] == tool2].copy()
+
+            merged = pd.merge(
+                df1, df2,
+                on=["run_name", "sample"],
+                suffixes=(f"_{tool1}", f"_{tool2}")
+            )
+
+            merged["SP-Score_diff"] = merged[f"SP-Score_{tool2}"] - merged[f"SP-Score_{tool1}"]
+            merged["TC_diff"] = merged[f"TC_{tool2}"] - merged[f"TC_{tool1}"]
+            merged["runtime_diff"] = merged[f"s_{tool2}"] - merged[f"s_{tool1}"]
+
+            merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
+
+            print(f"\nComparison: {tool2} vs {tool1}")
+            print(f"Positive differences indicate {tool2} performed better (except runtime)\n")
+            print(merged_sorted[["run_name", "sample", "SP-Score_diff", "TC_diff", "runtime_diff"]].to_string(index=False))
+
+            print("\nSummary (mean differences by run):")
+            print(merged.groupby(["run_name"])[["SP-Score_diff", "TC_diff", "runtime_diff"]].mean())
+
+            if len(run_names) > 1:
+                print("\nTotal (mean differences):")
+                print(merged[["SP-Score_diff", "TC_diff", "runtime_diff"]].mean())
 
     elif args.compare:
         # Compare mode: show differences between two runs
