@@ -10,5 +10,11 @@ for dir in balifam*; do
     mv "$dir/in" "$dir/unaligned"
     mv "$dir/ref" "$dir/aligned"
 done
+# Replace . with - in the references (for FastSP to work)
+find . -path '*/aligned/*' -type f -exec sh -c '
+  for f; do
+    sed -i "/^>/! s/\./-/g" "$f"
+  done
+' sh {} +
 # Protect benchmark files from writing
 chmod -w balifam*/unaligned/* balifam*/aligned/*

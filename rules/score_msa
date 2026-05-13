@@ -38,7 +38,7 @@ rule score_msa:
             )
             # compute scores
             fastsp_output = shell(
-                "java -jar FastSP/FastSP.jar -r {input.ref} -e {output.proj}",
+                "java -jar FastSP/FastSP.jar -r {input.ref} -e {output.proj} -mlr",
                 read=True
             )
             # write it with the scores into a single line
