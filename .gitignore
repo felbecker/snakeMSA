@@ -25,6 +25,7 @@ data/ext_homfam/*
 !data/homstrad/get_homstrad.sh
 !data/homstrad/clean_homstrad.py
 !data/balifam/get_balifam.sh
+!data/balifam/predict3di.sh
 !data/homfam/get_homfam.sh
 !data/homfam/predict3di.sh
 !data/homfam/merge3di.sh
