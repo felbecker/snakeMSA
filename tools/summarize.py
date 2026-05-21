@@ -51,6 +51,11 @@ argparser.add_argument(
     '--barplots', action='store_true',
     help="Create a bar plot (SP-Score, TC, runtime) for each run."
 )
+argparser.add_argument(
+    '--average-replicas', action='store_true', dest='average_replicas',
+    help="Average results across tools that share the same base name but differ only "
+         "by a '_replica_N' suffix (e.g. tool_replica_1, tool_replica_2 → tool)."
+)
 
 args = argparser.parse_args()
 
@@ -195,6 +200,9 @@ if __name__ == '__main__':
             common_tools = {tool1, tool2}
 
     df = make_merged_df(run_names, common_tools)
+
+    if args.average_replicas:
+        df["tool"] = df["tool"].str.replace(r'_replica_\d+$', '', regex=True)
 
     if args.compare_tools:
         tool1, tool2 = args.compare_tools
