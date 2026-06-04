@@ -392,11 +392,8 @@ if __name__ == '__main__':
     if args.barplots:
         from plots import barplot
         tool_order = args.tools if args.tools else None
-        for run in run_names:
-            run_df = df[df["run_name"] == run]
-            barplot(
-                run_df,
-                run_name=run,
-                tools=tool_order,
-                output_path=f"{run}_barplot.png"
-            )
+        if len(run_names) == 1:
+            name = run_names[0]
+        else:
+            name = "_".join(run_names)
+        barplot(df, run_name=name, tools=tool_order, output_path=f"{name}_barplot.png")

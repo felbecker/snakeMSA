@@ -79,15 +79,32 @@ def main() -> None:
         "-o", "--output",
         metavar="FILE",
         default=None,
-        help="Write TSV output to FILE instead of stdout.",
+        help="Write output to FILE instead of stdout.",
+    )
+    parser.add_argument(
+        "--markdown",
+        action="store_true",
+        help="Print the table in Markdown format.",
     )
     args = parser.parse_args()
 
     df = compute_stats(args.input, args.aligned)
 
+    numeric_cols = [c for c in df.columns if c != "family"]
+    avg_row = df[numeric_cols].mean().round(2).to_frame().T
+    avg_row.insert(0, "family", "AVERAGE")
+
     out = open(args.output, "w", newline="") if args.output else sys.stdout
     try:
-        df.to_csv(out, sep="\t", index=False)
+        if args.markdown:
+            out.write(df.to_markdown(index=False))
+            out.write("\n\n")
+            out.write(avg_row.to_markdown(index=False))
+            out.write("\n")
+        else:
+            df.to_csv(out, sep="\t", index=False)
+            out.write("\n")
+            avg_row.to_csv(out, sep="\t", index=False)
     finally:
         if args.output:
             out.close()
