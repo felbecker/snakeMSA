@@ -21,6 +21,11 @@ rule align:
             config["data_path"] + "/" + config.get("struct_data", "") + "/"
             + os.path.splitext(wildcards.sample)[0] + ".fasta"
             if "struct_data" in config else ""
+        ),
+        emb=lambda wildcards: (
+            config["data_path"] + "/" + config.get("emb_data", "") + "/"
+            + os.path.splitext(wildcards.sample)[0] + ".emb"
+            if "emb_data" in config else ""
         )
     run:
         tool_command=config["tools"][wildcards.tool]["command"]
@@ -32,7 +37,8 @@ rule align:
             threads=threads,
             workdir=params.workdir,
             tree=params.tree,
-            struct=params.struct
+            struct=params.struct,
+            emb=params.emb,
         )
 
         print("Running command: ", cmd)
