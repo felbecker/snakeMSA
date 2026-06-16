@@ -22,6 +22,9 @@ rule score_msa:
             if "pdb" in config else ""
         )
     run:
+        # Ensure log directory exists before any shell calls write to it
+        os.makedirs(os.path.dirname(log.stdout), exist_ok=True)
+
         msa_failed = False
         with open(input.est, "r") as est_file:
             if est_file.readline().strip() == "FAILED":
@@ -42,10 +45,12 @@ rule score_msa:
                 + " --msa {input.est}"
                 + " --ref {input.ref}"
                 + " --out {output.proj}"
+                + " >> {log.stdout} 2>> {log.stderr}"
             )
             # compute scores
             fastsp_output = shell(
-                "java -jar FastSP/FastSP.jar -r {input.ref} -e {output.proj} -mlr",
+                "java -jar FastSP/FastSP.jar -r {input.ref} -e {output.proj} -mlr"
+                + " 2>> {log.stderr}",
                 read=True
             )
             # write it with the scores into a single line
@@ -58,11 +63,18 @@ rule score_msa:
             if params.pdb == "":
                 lddt = "-1"
             else:
-                shell(f"foldmason createdb {params.pdb} {params.workdir}/foldmason_db")
+                shell(
+                    "foldmason createdb {params.pdb} {params.workdir}/foldmason_db"
+                    + " >> {log.stdout} 2>> {log.stderr}"
+                )
                 if not os.path.exists(f"{params.workdir}/foldmason_db"):
                     lddt = "-1"
                 else:
-                    lddt_output = shell(f"foldmason msa2lddt {params.workdir}/foldmason_db {output.proj}", read=True)
+                    lddt_output = shell(
+                        "foldmason msa2lddt {params.workdir}/foldmason_db {output.proj}"
+                        + " 2>> {log.stderr}",
+                        read=True
+                    )
                     lddt_match = next((line for line in lddt_output.splitlines() if line.startswith("Average MSA LDDT:")), None)
                     lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
 
