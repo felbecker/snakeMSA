@@ -1,7 +1,7 @@
 {
     "name": "learnMSA",
     "tools": {
-      "learnMSA" : {
+      "learnMSA_replica_1" : {
         "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
         "params": [
           	"-i {input}",
@@ -10,7 +10,7 @@
 	    	    "--save_model"
         ]
       },
-      "learnMSA_new" : {
+      "learnMSA_replica_2" : {
         "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
         "params": [
           	"-i {input}",
@@ -19,128 +19,141 @@
 	    	    "--save_model"
         ]
       },
-      "learnMSA2_new" : {
+      "learnMSA_replica_3" : {
+        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+        "params": [
+          	"-i {input}",
+          	"-o {output}",
+            "--work_dir {workdir}",
+	    	    "--save_model"
+        ]
+      },
+	"learnMSA_left_replica_1" : {
+	    "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+	    "params": [
+		"-i {input}",
+		"-o {output}",
+		"--work_dir {workdir}",
+		"--save_model",
+		"--align_hits left"
+	    ]
+	},
+	"learnMSA_left_replica_2" : {
+	    "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+	    "params": [
+		"-i {input}",
+		"-o {output}",
+		"--work_dir {workdir}",
+		"--save_model",
+		"--align_hits left"
+	    ]
+	},
+	"learnMSA_left_replica_3" : {
+	    "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+	    "params": [
+		"-i {input}",
+		"-o {output}",
+		"--work_dir {workdir}",
+		"--save_model",
+		"--align_hits left"
+	    ]
+	},
+	"learnMSA_greedy_replica_1" : {
+	    "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+	    "params": [
+		"-i {input}",
+		"-o {output}",
+		"--work_dir {workdir}",
+		"--save_model",
+		"--align_hits greedy_scores"
+	    ]
+	},
+	"learnMSA_greedy_replica_2" : {
+	    "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+	    "params": [
+		"-i {input}",
+		"-o {output}",
+		"--work_dir {workdir}",
+		"--save_model",
+		"--align_hits greedy_scores"
+	    ]
+	},
+	"learnMSA_greedy_replica_3" : {
+	    "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+	    "params": [
+		"-i {input}",
+		"-o {output}",
+		"--work_dir {workdir}",
+		"--save_model",
+		"--align_hits greedy_scores"
+	    ]
+	},
+      "learnMSA2_replica_1" : {
         "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
         "params": [
           	"-i {input}",
           	"-o {output}",
             "--work_dir {workdir}",
 	    	    "--save_model",
-		        "--use_language_model"
+            "--load_emb {emb}"
         ]
       },
-      "learnMSA_iter" : {
-        "command": "conda run --live-stream -n learnMSAdev2 ../learnMSA/util/learnMSA_iter.sh",
-        "params": [
-          "{input}",
-          "{output}",
-          "{workdir}"
-        ]
-      },
-      "learnMSA_3di" : {
+      "learnMSA2_replica_2" : {
         "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
         "params": [
-            "-i {input}",
-            "-o {output}",
-            "--struct {struct}",
+          	"-i {input}",
+          	"-o {output}",
             "--work_dir {workdir}",
-	    	    "--save_model"
+	    	    "--save_model",
+            "--load_emb {emb}"
         ]
       },
-      "learnMSA_3di_AF_Q" : {
+      "learnMSA2_replica_3" : {
         "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
         "params": [
-            "-i {input}",
-            "-o {output}",
-            "--struct {struct}",
+          	"-i {input}",
+          	"-o {output}",
             "--work_dir {workdir}",
-	    	    "--save_model"
+	    	    "--save_model",
+            "--load_emb {emb}"
         ]
       },
-      "learnMSA_3di_prior_1" : {
+      "learnMSA_struct_replica_1" : {
         "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
         "params": [
-            "-i {input}",
-            "-o {output}",
-            "--struct {struct}",
+          	"-i {input}",
+          	"-o {output}",
             "--work_dir {workdir}",
-            "--save_model",
-            "--struct_prior_name pfam_35_3Di_1",
-            "--struct_prior_components 1"
+	    	    "--save_model",
+            "--struct {struct}"
         ]
       },
-      "learnMSA_3di_prior_9" : {
+      "learnMSA_struct_replica_2" : {
         "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
         "params": [
-            "-i {input}",
-            "-o {output}",
-            "--struct {struct}",
+          	"-i {input}",
+          	"-o {output}",
             "--work_dir {workdir}",
-            "--save_model",
-            "--struct_prior_name pfam_35_3Di_9",
-            "--struct_prior_components 9"
+	    	    "--save_model",
+            "--struct {struct}"
         ]
       },
-      "learnMSA_evo" : {
+      "learnMSA_struct_replica_3" : {
         "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
         "params": [
-          "-i {input}",
-          "-o {output}",
-          "--cluster_dir {workdir}",
-          "--save_model",
-          "--trainable_exchangeabilities"
-        ]
-      },
-      "learnMSA_3Di_evo" : {
-        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
-        "params": [
-          "-i {input}",
-          "-o {output}",
-          "--struct {struct}",
-          "--cluster_dir {workdir}",
-          "--save_model",
-          "--trainable_exchangeabilities"
-        ]
-      },
-      "learnMSA_evo_lora" : {
-        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
-        "params": [
-          "-i {input}",
-          "-o {output}",
-          "--cluster_dir {workdir}",
-          "--save_model",
-          "--trainable_exchangeabilities",
-          "--anc_probs_lora 5"
-        ]
-      },
-      "learnMSA_3Di_evo_lora" : {
-        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
-        "params": [
-          "-i {input}",
-          "-o {output}",
-          "--struct {struct}",
-          "--cluster_dir {workdir}",
-          "--save_model",
-          "--trainable_exchangeabilities",
-          "--anc_probs_lora 5"
-        ]
-      },
-      "learnMSA_evo_l2" : {
-        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
-        "params": [
-          "-i {input}",
-          "-o {output}",
-          "--cluster_dir {workdir}",
-          "--save_model",
-          "--trainable_exchangeabilities",
-          "--exchangeability_l2 1e-4"
+          	"-i {input}",
+          	"-o {output}",
+            "--work_dir {workdir}",
+	    	    "--save_model",
+            "--struct {struct}"
         ]
       }
     },
     "data_path": "data/homfam",
     "struct_data": "predicted_3di",
+    "emb_data": "emb",
     "use_gpu": 1,
-    "align_threads": 32,
-    "align_mem": 64000,
-    "align_runtime": "12h"
+    "align_threads": 4,
+    "align_mem": 32000,
+    "align_runtime": "4h"
 }
