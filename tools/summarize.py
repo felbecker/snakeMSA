@@ -144,6 +144,9 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
     # Concatenate all dataframes into a single dataframe
     merged_df = pd.concat(dfs, ignore_index=True)
 
+    # Treat -1 as "not available" so it is excluded from averages
+    merged_df["lddt"] = merged_df["lddt"].replace(-1, np.nan)
+
     return merged_df
 
 
