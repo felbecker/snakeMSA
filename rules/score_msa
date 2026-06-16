@@ -59,9 +59,12 @@ rule score_msa:
                 lddt = "-1"
             else:
                 shell(f"foldmason createdb {params.pdb} {params.workdir}/foldmason_db")
-                lddt_output = shell(f"foldmason msa2lddt {params.workdir}/foldmason_db {output.proj}", read=True)
-                lddt_match = next((line for line in lddt_output.splitlines() if line.startswith("Average MSA LDDT:")), None)
-                lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
+                if not os.path.exists(f"{params.workdir}/foldmason_db"):
+                    lddt = "-1"
+                else:
+                    lddt_output = shell(f"foldmason msa2lddt {params.workdir}/foldmason_db {output.proj}", read=True)
+                    lddt_match = next((line for line in lddt_output.splitlines() if line.startswith("Average MSA LDDT:")), None)
+                    lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
 
         else:
             # If project_msa.py fails, create an empty output.proj
