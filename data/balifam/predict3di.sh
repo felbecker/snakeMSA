@@ -21,3 +21,6 @@ for dataset_dir in balifam/balifam100 balifam/balifam1000 balifam/balifam10000; 
     done
     popd > /dev/null
 done
+for f in balifam/balifam100/predicted_3di/*.100.fasta; do mv -- "$f" "${f/.100.fasta/.fasta}"; done
+for f in balifam/balifam1000/predicted_3di/*.1000.fasta; do mv -- "$f" "${f/.1000.fasta/.fasta}"; done
+for f in balifam/balifam10000/predicted_3di/*.10000.fasta; do mv -- "$f" "${f/.10000.fasta/.fasta}"; done
