@@ -117,3 +117,101 @@ def barplot(
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     print(f"Saved bar plot to {output_path}")
     plt.close(fig)
+
+
+def barplot_lddt(
+    df: pd.DataFrame,
+    run_name: str,
+    tools: Optional[List[str]] = None,
+    output_path: Optional[str] = None,
+) -> None:
+    """Create a bar plot for a single run showing LDDT bars, with
+    mean runtime as a label over each bar.
+
+    Parameters
+    ----------
+    df:
+        Merged dataframe as returned by ``make_merged_df`` from summarize.py.
+    run_name:
+        Name used for the figure title and default output filename.
+    tools:
+        Ordered list of tool names to include. If *None* all tools in *df* are
+        used, sorted by mean LDDT descending.
+    output_path:
+        File path to save the figure (PNG). If *None* the figure is saved as
+        ``<run_name>_barplot_lddt.png`` in the current working directory.
+    """
+    sns.set_style("whitegrid")
+
+    available = df["tool"].unique().tolist()
+
+    if tools is None:
+        candidates = available
+    else:
+        candidates = [t for t in tools if t in available]
+
+    # Sort by mean LDDT descending
+    order = (
+        df[df["tool"].isin(candidates)].groupby("tool")["lddt"].mean()
+        .sort_values(ascending=False)
+        .index.tolist()
+    )
+
+    if not order:
+        raise ValueError("No matching tools found in the dataframe.")
+
+    data = df[df["tool"].isin(order)].copy()
+    means = data.groupby("tool")[["lddt", "s"]].mean()
+
+    n_tools = len(order)
+    font_size = 10
+    fig, ax = plt.subplots(figsize=(max(5, n_tools * 1.2), 4.5))
+    fig.suptitle(run_name, fontsize=font_size + 2, fontweight="bold")
+
+    palette_deep = sns.color_palette("deep", n_tools)
+    color_deep = {t: palette_deep[i] for i, t in enumerate(order)}
+
+    sns.barplot(
+        data=data, x="tool", y="lddt", hue="tool", order=order,
+        err_kws={"color": ".4", "linewidth": 1.5}, capsize=0.2,
+        linewidth=1, edgecolor=".6",
+        palette=color_deep, alpha=0.8, ax=ax,
+    )
+
+    # Runtime labels centred on each bar
+    y_min = means["lddt"].min()
+    y_mid = means["lddt"].max()
+    label_y = y_min + (y_mid - y_min) / 2
+
+    for tool in order:
+        seconds = means.loc[tool, "s"]
+        hours = seconds / 3600
+        if hours >= 1:
+            label = f"{hours:.2f} h"
+        elif seconds >= 60:
+            label = f"{seconds / 60:.1f} m"
+        else:
+            label = f"{seconds:.0f} s"
+        ax.text(
+            tool, label_y, label,
+            ha="center", va="center",
+            color="black", fontsize=font_size * 0.85,
+            path_effects=[pe.withStroke(linewidth=3, foreground="white")],
+        )
+
+    ax.set_xlabel("")
+    ax.set_ylabel("LDDT", fontsize=font_size)
+    ax.set_ylim(bottom=max(0, y_min - 0.05))
+    for item in ax.get_xticklabels():
+        item.set_rotation(20)
+        item.set_size(font_size)
+    ax.legend_ and ax.legend_.remove()
+
+    plt.tight_layout()
+
+    if output_path is None:
+        output_path = f"{run_name}_barplot_lddt.png"
+
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    print(f"Saved LDDT bar plot to {output_path}")
+    plt.close(fig)

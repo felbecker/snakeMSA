@@ -5,6 +5,7 @@ dependencies:
   - snakemake  
   - openjdk
   - biopython
+  - foldmason
   - pip
   - pip:
     - snakemake-executor-plugin-slurm
