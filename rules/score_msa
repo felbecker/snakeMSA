@@ -14,6 +14,13 @@ rule score_msa:
     log:
         stdout="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.log",
         stderr="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.err",
+    params:
+        workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
+        pdb=lambda wildcards: (
+            config["data_path"] + "/" + config.get("pdb", "") + "/"
+            + os.path.splitext(wildcards.sample)[0]
+            if "pdb" in config else ""
+        )
     run:
         msa_failed = False
         with open(input.est, "r") as est_file:
@@ -47,15 +54,25 @@ rule score_msa:
                 line.split()[1] for line in fastsp_output.strip().split('\n')
             ]
 
+            # compute lddt score using foldmason
+            if params.pdb == "":
+                lddt = "-1"
+            else:
+                shell(f"foldmason createdb {params.pdb} {params.workdir}/foldmason_db")
+                lddt_output = shell(f"foldmason msa2lddt {params.workdir}/foldmason_db {output.proj}", read=True)
+                lddt_match = next((line for line in lddt_output.splitlines() if line.startswith("Average MSA LDDT:")), None)
+                lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
+
         else:
             # If project_msa.py fails, create an empty output.proj
             with open(output.proj, 'w') as f:
                 pass
             success_flag = 0
             values = ['0'] * 7
+            lddt = "0"
 
         with open(output.score, 'w') as f:
-            f.write(f"{sample_name} {success_flag} {' '.join(values)}")
+            f.write(f"{sample_name} {success_flag} {' '.join(values)} {lddt}")
 
 
 rule concat_scores:
@@ -84,6 +101,7 @@ rule concat_scores:
                 +" -e " + config["data_path"]+"/aligned/"+SAMPLES[0]
                 + " | awk '{{print $1}}' \
                     | tr '\n' ' ' >> {output}")
+        shell("echo -n 'lddt ' >> {output}")
         shell("echo $(head -n 1 " + input.benchmarks[0] + ") >> {output}")
 
         def normalize_line(line):
