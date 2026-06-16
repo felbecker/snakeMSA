@@ -19,6 +19,15 @@
 	    	    "--save_model"
         ]
       },
+      "learnMSA_new_greedy_single" : {
+        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+        "params": [
+          	"-i {input}",
+          	"-o {output}",
+            "--work_dir {workdir}",
+	    	    "--save_model"
+        ]
+      },
       "learnMSA2_new" : {
         "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
         "params": [
@@ -27,6 +36,38 @@
             "--work_dir {workdir}",
 	    	    "--save_model",
 		        "--use_language_model"
+        ]
+      },
+      "learnMSA2_new_left" : {
+        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+        "params": [
+          	"-i {input}",
+          	"-o {output}",
+            "--work_dir {workdir}",
+	    	    "--save_model",
+		        "--use_language_model",
+            "--align_hits left"
+        ]
+      },
+      "learnMSA2_new_greedy_single" : {
+        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+        "params": [
+          	"-i {input}",
+          	"-o {output}",
+            "--work_dir {workdir}",
+	    	    "--save_model",
+		        "--use_language_model"
+        ]
+      },
+      "learnMSA2_new_greedy_single_B" : {
+        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+        "params": [
+          	"-i {input}",
+          	"-o {output}",
+            "--work_dir {workdir}",
+	    	    "--save_model",
+		        "--use_language_model",
+            "--save_emb"
         ]
       },
       "learnMSA_iter" : {
@@ -45,6 +86,17 @@
             "--struct {struct}",
             "--work_dir {workdir}",
 	    	    "--save_model"
+        ]
+      },
+      "learnMSA_3di_no_w" : {
+        "command": "conda run --live-stream -n learnMSAdev2 python ../learnMSA/learnMSA.py",
+        "params": [
+            "-i {input}",
+            "-o {output}",
+            "--struct {struct}",
+            "--work_dir {workdir}",
+	    	    "--save_model",
+            "--no_sequence_weights"
         ]
       },
       "learnMSA_3di_AF_Q" : {
