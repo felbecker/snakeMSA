@@ -14,6 +14,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from data_stats import compute_stats
 
 
+STRUCT_SCORE_COLS = ["lddt", "lddt_core", "lddt_muscle", "dali_z"]
+
+
 argparser = argparse.ArgumentParser(
     description="Summarize the results of one or more runs."
 )
@@ -52,13 +55,27 @@ argparser.add_argument(
     help="Create a bar plot (SP-Score, TC, runtime) for each run."
 )
 argparser.add_argument(
-    '--barplot_lddt', action='store_true',
-    help="Create a bar plot (SP-Score only, runtime) for each run."
+    '--barplot_lddt', nargs='?', const='lddt', default=None, metavar='LDDT_TYPE',
+    help="Create a bar plot for LDDT. Optionally specify the variant to plot: "
+         "lddt (default), lddt_core, lddt_muscle, or dali_z."
 )
 argparser.add_argument(
     '--average-replicas', action='store_true', dest='average_replicas',
     help="Average results across tools that share the same base name but differ only "
          "by a '_replica_N' suffix (e.g. tool_replica_1, tool_replica_2 → tool)."
+)
+argparser.add_argument(
+    '--barplot_title', type=str, default=None, metavar='TITLE',
+    help="Title to use for bar plots (overrides the default run name title)."
+)
+argparser.add_argument(
+    '--barplot_fontsize', type=int, default=None, metavar='SIZE',
+    help="Base font size for bar plots."
+)
+argparser.add_argument(
+    '--barplot_tool_names', type=str, default=None, metavar='FILE',
+    help="Tab-separated file mapping tool names: one row per tool with columns "
+         "'name_in_dataframe<TAB>name_in_plot'. Whitespace is allowed in name_in_plot."
 )
 
 args = argparser.parse_args()
@@ -123,7 +140,6 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
             filename = f"results/{run_name}/{tool}.out"
             if not os.path.isfile(filename):
                 continue
-            print(tool)
             with open(filename) as fh:
                 content = fh.read()
             # Normalize "N day[s], h:m:s" → "total_h:m:s" so the
@@ -145,7 +161,9 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
     merged_df = pd.concat(dfs, ignore_index=True)
 
     # Treat -1 as "not available" so it is excluded from averages
-    merged_df["lddt"] = merged_df["lddt"].replace(-1, np.nan)
+    for _col in STRUCT_SCORE_COLS:
+        if _col in merged_df.columns:
+            merged_df[_col] = merged_df[_col].replace(-1, np.nan)
 
     return merged_df
 
@@ -223,6 +241,9 @@ if __name__ == '__main__':
             merged["SP-Score_diff"] = merged["SP-Score_2"] - merged["SP-Score_1"]
             merged["TC_diff"] = merged["TC_2"] - merged["TC_1"]
             merged["lddt_diff"] = merged["lddt_2"] - merged["lddt_1"]
+            for _lc in ["lddt_core", "lddt_muscle"]:
+                if f"{_lc}_1" in merged.columns and f"{_lc}_2" in merged.columns:
+                    merged[f"{_lc}_diff"] = merged[f"{_lc}_2"] - merged[f"{_lc}_1"]
             merged["runtime_diff"] = merged["s_2"] - merged["s_1"]
 
             label1 = f"{tool1} ({run1_name})"
@@ -230,7 +251,8 @@ if __name__ == '__main__':
             print(f"\nComparison: {label2} vs {label1}")
             print(f"Positive differences indicate {label2} performed better (except runtime)\n")
 
-            diff_cols = ["sample", "SP-Score_diff", "TC_diff", "lddt_diff", "runtime_diff"]
+            _lddt_diff_cols = [c for c in ["lddt_diff", "lddt_core_diff", "lddt_muscle_diff"] if c in merged.columns]
+            diff_cols = ["sample", "SP-Score_diff", "TC_diff"] + _lddt_diff_cols + ["runtime_diff"]
 
             if args.more_detailed:
                 # Load dataset statistics from run1's config
@@ -260,14 +282,15 @@ if __name__ == '__main__':
                 ).rename(columns={"family": "sample"})
                 merged = merged.merge(ds_stats, on="sample", how="left")
                 diff_cols = ["sample", "num_seq", "max_len", "avg_len", "pid",
-                             "SP-Score_diff", "TC_diff", "lddt_diff", "runtime_diff"]
+                             "SP-Score_diff", "TC_diff"] + _lddt_diff_cols + ["runtime_diff"]
 
             if args.detailed or args.more_detailed:
                 merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
                 print(merged_sorted[diff_cols].to_string(index=False))
 
             print("\nSummary (mean differences):")
-            print(merged[["SP-Score_diff", "TC_diff", "lddt_diff", "runtime_diff"]].mean().to_string())
+            _summary_diff_cols = ["SP-Score_diff", "TC_diff"] + _lddt_diff_cols + ["runtime_diff"]
+            print(merged[_summary_diff_cols].mean().to_string())
 
         else:
             df1 = df[df["tool"] == tool1].copy()
@@ -282,20 +305,24 @@ if __name__ == '__main__':
             merged["SP-Score_diff"] = merged[f"SP-Score_{tool2}"] - merged[f"SP-Score_{tool1}"]
             merged["TC_diff"] = merged[f"TC_{tool2}"] - merged[f"TC_{tool1}"]
             merged["lddt_diff"] = merged[f"lddt_{tool2}"] - merged[f"lddt_{tool1}"]
+            for _lc in ["lddt_core", "lddt_muscle"]:
+                if f"{_lc}_{tool1}" in merged.columns and f"{_lc}_{tool2}" in merged.columns:
+                    merged[f"{_lc}_diff"] = merged[f"{_lc}_{tool2}"] - merged[f"{_lc}_{tool1}"]
             merged["runtime_diff"] = merged[f"s_{tool2}"] - merged[f"s_{tool1}"]
 
             merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
 
             print(f"\nComparison: {tool2} vs {tool1}")
             print(f"Positive differences indicate {tool2} performed better (except runtime)\n")
-            print(merged_sorted[["run_name", "sample", "SP-Score_diff", "TC_diff", "lddt_diff", "runtime_diff"]].to_string(index=False))
+            _lddt_diff_cols2 = [c for c in ["lddt_diff", "lddt_core_diff", "lddt_muscle_diff"] if c in merged_sorted.columns]
+            print(merged_sorted[["run_name", "sample", "SP-Score_diff", "TC_diff"] + _lddt_diff_cols2 + ["runtime_diff"]].to_string(index=False))
 
             print("\nSummary (mean differences by run):")
-            print(merged.groupby(["run_name"])[["SP-Score_diff", "TC_diff", "lddt_diff", "runtime_diff"]].mean())
+            print(merged.groupby(["run_name"])[["SP-Score_diff", "TC_diff"] + _lddt_diff_cols2 + ["runtime_diff"]].mean())
 
             if len(run_names) > 1:
                 print("\nTotal (mean differences):")
-                print(merged[["SP-Score_diff", "TC_diff", "lddt_diff", "runtime_diff"]].mean())
+                print(merged[["SP-Score_diff", "TC_diff"] + _lddt_diff_cols2 + ["runtime_diff"]].mean())
 
     elif args.compare:
         # Compare mode: show differences between two runs
@@ -316,6 +343,9 @@ if __name__ == '__main__':
         merged["SP-Score_diff"] = merged[f"SP-Score_{run2_name}"] - merged[f"SP-Score_{run1_name}"]
         merged["TC_diff"] = merged[f"TC_{run2_name}"] - merged[f"TC_{run1_name}"]
         merged["lddt_diff"] = merged[f"lddt_{run2_name}"] - merged[f"lddt_{run1_name}"]
+        for _lc in ["lddt_core", "lddt_muscle"]:
+            if f"{_lc}_{run2_name}" in merged.columns and f"{_lc}_{run1_name}" in merged.columns:
+                merged[f"{_lc}_diff"] = merged[f"{_lc}_{run2_name}"] - merged[f"{_lc}_{run1_name}"]
         merged["runtime_diff"] = merged[f"s_{run2_name}"] - merged[f"s_{run1_name}"]
 
         # Sort by TC difference (descending)
@@ -324,11 +354,12 @@ if __name__ == '__main__':
         # Display results
         print(f"\nComparison: {run2_name} vs {run1_name}")
         print(f"Positive differences indicate {run2_name} performed better (except runtime)\n")
-        print(merged_sorted[["tool", "sample", "SP-Score_diff", "TC_diff", "lddt_diff", "runtime_diff"]].to_string(index=False))
+        _lddt_diff_cols3 = [c for c in ["lddt_diff", "lddt_core_diff", "lddt_muscle_diff"] if c in merged_sorted.columns]
+        print(merged_sorted[["tool", "sample", "SP-Score_diff", "TC_diff"] + _lddt_diff_cols3 + ["runtime_diff"]].to_string(index=False))
 
         # Print summary statistics
         print("\nSummary (mean differences by tool):")
-        print(merged.groupby(["tool"])[["SP-Score_diff", "TC_diff", "lddt_diff", "runtime_diff"]].mean())
+        print(merged.groupby(["tool"])[["SP-Score_diff", "TC_diff"] + _lddt_diff_cols3 + ["runtime_diff"]].mean())
 
     elif args.detailed or args.more_detailed:
         df_sorted = df.sort_values(by="TC", ascending=False)
@@ -378,25 +409,28 @@ if __name__ == '__main__':
             df_sorted.rename(
                 columns={"avg_pairwise_identity": "pid"}, inplace=True
             )
-            print(df_sorted[[
-                "run_name", "tool", "sample",
-                "num_seq", "max_len", "avg_len", "pid",
-                "SP-Score", "TC", "lddt", "s", "h:m:s", "success",
-            ]].to_string(index=False))
+            _lddt_cols = [c for c in STRUCT_SCORE_COLS if c in df_sorted.columns]
+            print(df_sorted[
+                ["run_name", "tool", "sample",
+                 "num_seq", "max_len", "avg_len", "pid",
+                 "SP-Score", "TC"] + _lddt_cols + ["s", "h:m:s", "success"]
+            ].to_string(index=False))
         else:
-            print(df_sorted[[
-                "run_name", "tool", "sample", "SP-Score", "TC", "lddt", "s", "h:m:s", "max_rss", "success"
-            ]].to_string(index=False))
+            _lddt_cols = [c for c in STRUCT_SCORE_COLS if c in df_sorted.columns]
+            print(df_sorted[
+                ["run_name", "tool", "sample", "SP-Score", "TC"] + _lddt_cols + ["s", "h:m:s", "max_rss", "success"]
+            ].to_string(index=False))
     else:
         with pd.option_context('display.max_columns', None, 'display.width', None):
+            _lddt_cols = [c for c in STRUCT_SCORE_COLS if c in df.columns]
             print(
                 df.groupby(
                     ["run_name", "tool"]
-                )[["SP-Score", "TC", "lddt", "s", "success"]].mean()
+                )[["SP-Score", "TC"] + _lddt_cols + ["s", "success"]].mean()
             )
             print("Total:")
             print(
-                df.groupby(["tool"])[["SP-Score", "TC", "lddt", "s", "success"]].mean()
+                df.groupby(["tool"])[["SP-Score", "TC"] + _lddt_cols + ["s", "success"]].mean()
             )
 
     if args.barplots or args.barplot_lddt:
@@ -406,7 +440,25 @@ if __name__ == '__main__':
             name = run_names[0]
         else:
             name = "_".join(run_names)
+        # Parse optional tool name mapping file
+        tool_name_map = None
+        if args.barplot_tool_names:
+            tool_name_map = {}
+            with open(args.barplot_tool_names) as _fh:
+                for _line in _fh:
+                    _line = _line.rstrip("\n")
+                    if not _line or _line.startswith("#"):
+                        continue
+                    _parts = _line.split(None, 1)
+                    if len(_parts) == 2:
+                        tool_name_map[_parts[0]] = _parts[1]
+        plot_title = args.barplot_title if args.barplot_title else name
+        plot_fontsize = args.barplot_fontsize
         if args.barplots:
-            barplot(df, run_name=name, tools=tool_order, output_path=f"{name}_barplot.png")
+            barplot(df, run_name=name, tools=tool_order, output_path=f"{name}_barplot.png",
+                    title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map)
         if args.barplot_lddt:
-            barplot_lddt(df, run_name=name, tools=tool_order, output_path=f"{name}_barplot_lddt.png")
+            lddt_col = args.barplot_lddt
+            barplot_lddt(df, run_name=name, tools=tool_order, lddt_col=lddt_col,
+                         output_path=f"{name}_barplot_{lddt_col}.png",
+                         title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map)

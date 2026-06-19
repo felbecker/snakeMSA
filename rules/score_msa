@@ -59,24 +59,77 @@ rule score_msa:
                 line.split()[1] for line in fastsp_output.strip().split('\n')
             ]
 
-            # compute lddt score using foldmason
+            # compute lddt scores using foldmason and pylddt
             if params.pdb == "":
                 lddt = "-1"
+                lddt_core = "-1"
+                lddt_muscle = "-1"
+                dali_z = "-1"
             else:
-                shell(
-                    "foldmason createdb {params.pdb} {params.workdir}/foldmason_db"
-                    + " >> {log.stdout} 2>> {log.stderr}"
-                )
-                if not os.path.exists(f"{params.workdir}/foldmason_db"):
+                if not os.path.exists(params.pdb):
                     lddt = "-1"
+                    lddt_core = "-1"
+                    lddt_muscle = "-1"
+                    dali_z = "-1"
                 else:
+                    os.makedirs(params.workdir, exist_ok=True)
+                    shell(
+                        "foldmason createdb {params.pdb} {params.workdir}/foldmason_db"
+                        + " >> {log.stdout} 2>> {log.stderr}"
+                    )
+                    # Standard foldmason LDDT
                     lddt_output = shell(
                         "foldmason msa2lddt {params.workdir}/foldmason_db {output.proj}"
                         + " 2>> {log.stderr}",
                         read=True
                     )
-                    lddt_match = next((line for line in lddt_output.splitlines() if line.startswith("Average MSA LDDT:")), None)
+                    lddt_match = next((
+                        line for line in lddt_output.splitlines()
+                        if line.startswith("Average MSA LDDT:")
+                    ), None)
                     lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
+                    # Foldmason LDDT core (conserved columns only)
+                    lddt_core_output = shell(
+                        "foldmason msa2lddt {params.workdir}/foldmason_db {output.proj}"
+                        + " --pair-threshold 1.0 --only-scoring-cols true"
+                        + " 2>> {log.stderr}",
+                        read=True
+                    )
+                    lddt_core_match = next((
+                        line for line in lddt_core_output.splitlines()
+                        if line.startswith("Average MSA LDDT:")
+                    ), None)
+                    lddt_core = lddt_core_match.split(":")[1].strip() if lddt_core_match else "-1"
+                    # pylddt muscle LDDT and DALI Z score
+                    pdbfiles_txt = params.workdir + "/pdbfiles.txt"
+                    with open(pdbfiles_txt, "w") as pf:
+                        import glob
+                        for pdb_file in glob.glob(params.pdb + "/*"):
+                            pf.write(pdb_file + "\n")
+                    try:
+                        lddt_muscle_output = shell(
+                            "python pylddt/src/lddt_mu.py"
+                            + " --msa {output.proj}"
+                            + " --pdbfiles " + pdbfiles_txt
+                            + " 2>> {log.stderr}",
+                            read=True
+                        )
+                        dali_z_output = shell(
+                            "python pylddt/src/daliz.py"
+                            + " --msa {output.proj}"
+                            + " --pdbfiles " + pdbfiles_txt
+                            + " 2>> {log.stderr}",
+                            read=True
+                        )
+                        lddt_muscle = lddt_muscle_output.strip().split("\t")[1] if lddt_muscle_output.strip() else "-1"
+                        dali_z_match = next((
+                            line for line in dali_z_output.splitlines()
+                            if "mean_DALI_Z" in line
+                        ), None)
+                        dali_z = dali_z_match.split("=")[-1].strip() if dali_z_match else "-1"
+                    except Exception:
+                        lddt_muscle = "-1"
+                        dali_z = "-1"
 
         else:
             # If project_msa.py fails, create an empty output.proj
@@ -85,9 +138,12 @@ rule score_msa:
             success_flag = 0
             values = ['0'] * 7
             lddt = "0"
+            lddt_core = "0"
+            lddt_muscle = "0"
+            dali_z = "0"
 
         with open(output.score, 'w') as f:
-            f.write(f"{sample_name} {success_flag} {' '.join(values)} {lddt}")
+            f.write(f"{sample_name} {success_flag} {' '.join(values)} {lddt} {lddt_core} {lddt_muscle} {dali_z}")
 
 
 rule concat_scores:
@@ -116,7 +172,7 @@ rule concat_scores:
                 +" -e " + config["data_path"]+"/aligned/"+SAMPLES[0]
                 + " | awk '{{print $1}}' \
                     | tr '\n' ' ' >> {output}")
-        shell("echo -n 'lddt ' >> {output}")
+        shell("echo -n 'lddt lddt_core lddt_muscle dali_z ' >> {output}")
         shell("echo $(head -n 1 " + input.benchmarks[0] + ") >> {output}")
 
         def normalize_line(line):
