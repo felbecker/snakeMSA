@@ -16,11 +16,13 @@ data/*
 !data/balifam/
 !data/ext_homfam/
 !data/example_dataset/
+!data/homstradfam/
 # Ignore everything else inside these subfolders
 data/homstrad/*
 data/homfam/*
 data/balifam/*
 data/ext_homfam/*
+data/homstradfam/*
 # Allow only the specific files
 !data/homstrad/get_homstrad.sh
 !data/homstrad/clean_homstrad.py
@@ -32,6 +34,7 @@ data/ext_homfam/*
 !data/homfam/find3di.sh
 !data/ext_homfam/get_ext_homfam.sh
 !data/ext_homfam/uniquify.py
+!data/homstradfam/make_homstradfam.py
 configs/*
 !configs/default.json
 !configs/all.json
