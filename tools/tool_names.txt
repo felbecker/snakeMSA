@@ -1,0 +1,6 @@
+learnMSA2_struct    learnMSA (emb + 3Di)
+learnMSA2   learnMSA (emb)
+learnMSA_struct learnMSA (3Di)
+learnMSA learnMSA
+famsa FAMSA
+foldmason FoldMason

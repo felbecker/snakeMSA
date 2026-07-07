@@ -26,10 +26,18 @@ rule align:
             config["data_path"] + "/" + config.get("emb_data", "") + "/"
             + os.path.splitext(wildcards.sample)[0] + ".emb"
             if "emb_data" in config else ""
+        ),
+        pdb=lambda wildcards: (
+            config["data_path"] + "/" + config.get("pdb", "") + "/"
+            + os.path.splitext(wildcards.sample)[0]
+            if "pdb" in config else ""
         )
     run:
         tool_command=config["tools"][wildcards.tool]["command"]
         argstring = parse_cmd_args(config["tools"][wildcards.tool]["params"])
+
+        # Make sure workdir exists before running the command
+        os.makedirs(params.workdir, exist_ok=True)
 
         cmd = (tool_command + " " + argstring).format(
             input=input,
@@ -39,6 +47,7 @@ rule align:
             tree=params.tree,
             struct=params.struct,
             emb=params.emb,
+            pdb=params.pdb,
         )
 
         print("Running command: ", cmd)

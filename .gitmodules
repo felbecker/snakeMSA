@@ -4,3 +4,6 @@
 [submodule "3DUtil"]
 	path = 3DUtil
 	url = https://github.com/felbecker/3DUtil
+[submodule "pylddt"]
+	path = pylddt
+	url = https://github.com/rcedgar/pylddt
