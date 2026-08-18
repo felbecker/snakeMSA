@@ -1,5 +1,40 @@
 # type: ignore
 
+GPU_MEM_COLUMN = "max_gpu_mem"
+
+
+def merge_gpu_column(bench_path, column=GPU_MEM_COLUMN):
+    """Append the GPU memory sidecar value to a snakemake benchmark file.
+
+    The align rule cannot write this itself: snakemake overwrites the benchmark
+    file after the rule returns, so the value is parked in a sibling ".gpu" file
+    and folded in here. Benchmark files without a sidecar (e.g. from runs made
+    before GPU tracking existed) get -1. Idempotent, so re-running this rule
+    does not add the column twice.
+    """
+    with open(bench_path) as bench_file:
+        lines = bench_file.read().splitlines()
+    if not lines or column in lines[0].split("\t"):
+        return
+
+    gpu_path = os.path.splitext(bench_path)[0] + ".gpu"
+    try:
+        with open(gpu_path) as gpu_file:
+            value = gpu_file.read().strip() or "-1"
+    except FileNotFoundError:
+        value = "-1"
+
+    lines[0] += "\t" + column
+    for i in range(1, len(lines)):
+        lines[i] += "\t" + value
+
+    # write via a temporary file so a crash cannot truncate the benchmark
+    tmp_path = bench_path + ".tmp"
+    with open(tmp_path, "w") as tmp_file:
+        tmp_file.write("\n".join(lines) + "\n")
+    os.replace(tmp_path, bench_path)
+
+
 rule score_msa:
     input:
         est = "outputs/"+config["name"]+"/{tool}/alignments/{sample}",
@@ -165,6 +200,10 @@ rule concat_scores:
         mem_mb = 1000,
         runtime = "5m"
     run:
+        # fold the GPU memory sidecars into the benchmark files before reading
+        for b in input.benchmarks:
+            merge_gpu_column(b)
+
         shell("echo -n 'sample success ' > {output}")
         # write the header
         shell("java -jar FastSP/FastSP.jar"
