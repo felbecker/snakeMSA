@@ -1,4 +1,12 @@
 # type: ignore
+import sys
+
+# Out-of-process GPU memory tracking, so that any GPU tool can be measured
+# without instrumenting it (see tools/gpu_monitor.py).
+sys.path.insert(0, os.path.join(workflow.basedir, "tools"))
+import gpu_monitor
+
+
 rule align:
     input:
         config["data_path"]+"/unaligned/{sample}"
@@ -31,7 +39,8 @@ rule align:
             config["data_path"] + "/" + config.get("pdb", "") + "/"
             + os.path.splitext(wildcards.sample)[0]
             if "pdb" in config else ""
-        )
+        ),
+        gpu_bench="outputs/"+config["name"]+"/{tool}/benchmarks/{sample}.gpu"
     run:
         tool_command=config["tools"][wildcards.tool]["command"]
         argstring = parse_cmd_args(config["tools"][wildcards.tool]["params"])
@@ -61,7 +70,23 @@ rule align:
             stdout = subprocess.PIPE,
             stderr= subprocess.PIPE
         )
-        stdout, stderr= p.communicate()
+        # Track peak GPU memory of the command and all of its children for the
+        # duration of the run. Snakemake writes the benchmark file only after
+        # this rule returns, so the result goes to a sidecar that concat_scores
+        # merges into the benchmark file.
+        monitor = None
+        if config.get("use_gpu") and gpu_monitor.gpu_available():
+            monitor = gpu_monitor.GPUMemoryMonitor(p.pid).start()
+
+        try:
+            stdout, stderr= p.communicate()
+        finally:
+            peak_gpu_mb = (
+                monitor.stop() if monitor is not None else gpu_monitor.NULL_GPU_MEM
+            )
+            os.makedirs(os.path.dirname(params.gpu_bench), exist_ok=True)
+            with open(params.gpu_bench, "w") as gpu_file:
+                gpu_file.write(str(peak_gpu_mb))
 
         with open(log.stderr, "w") as err_file:
             print(stderr.decode(), file=err_file)

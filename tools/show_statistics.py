@@ -68,8 +68,6 @@ def analyze_dataset(filepath: Path) -> dict:
         dataset = SequenceDataset(
             filepath=filepath,
             fmt="fasta",
-            alphabet=args.alphabet,
-            replace_with_x="",
         )
 
         stats = {

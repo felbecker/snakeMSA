@@ -16,6 +16,13 @@ from data_stats import compute_stats
 
 STRUCT_SCORE_COLS = ["lddt", "lddt_core", "lddt_muscle", "dali_z"]
 
+#: Structural scores reported unless --all-struct-scores is given.
+DEFAULT_STRUCT_SCORE_COLS = ["lddt_muscle"]
+
+#: Peak GPU memory in MiB, recorded by the align rule. -1 means "not
+#: monitored" (CPU-only tool, or a run made before GPU tracking existed).
+GPU_MEM_COL = "max_gpu_mem"
+
 
 argparser = argparse.ArgumentParser(
     description="Summarize the results of one or more runs."
@@ -49,6 +56,11 @@ argparser.add_argument(
 argparser.add_argument(
     '--tools', nargs='+', type=str, metavar='TOOL',
     help="Restrict output to this subset of tools (applies to all modes)."
+)
+argparser.add_argument(
+    '--all-struct-scores', action='store_true', dest='all_struct_scores',
+    help="Report all structural scores (lddt, lddt_core, lddt_muscle, dali_z) "
+         "instead of only lddt_muscle."
 )
 argparser.add_argument(
     '--barplots', action='store_true',
@@ -161,12 +173,41 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
     merged_df = pd.concat(dfs, ignore_index=True)
 
     # Treat -1 as "not available" so it is excluded from averages
-    for _col in STRUCT_SCORE_COLS:
+    for _col in STRUCT_SCORE_COLS + [GPU_MEM_COL]:
         if _col in merged_df.columns:
             merged_df[_col] = merged_df[_col].replace(-1, np.nan)
 
     return merged_df
 
+
+
+def wanted_struct_score_cols() -> List[str]:
+    """The structural scores the user asked for: only lddt_muscle by default."""
+    return STRUCT_SCORE_COLS if args.all_struct_scores else DEFAULT_STRUCT_SCORE_COLS
+
+
+def struct_score_cols(frame: pd.DataFrame) -> List[str]:
+    """The requested structural scores that are present in ``frame``."""
+    return [c for c in wanted_struct_score_cols() if c in frame.columns]
+
+
+def struct_diff_cols(frame: pd.DataFrame, suffix1: str, suffix2: str) -> List[str]:
+    """The requested structural scores available on both sides of a comparison."""
+    return [
+        c for c in wanted_struct_score_cols()
+        if f"{c}{suffix1}" in frame.columns and f"{c}{suffix2}" in frame.columns
+    ]
+
+
+def gpu_mem_cols(frame: pd.DataFrame) -> List[str]:
+    """The peak GPU memory column, if any of the runs actually recorded it.
+
+    Kept out of the output entirely for CPU-only runs and for older results
+    files, where the column is either missing or all -1.
+    """
+    if GPU_MEM_COL in frame.columns and frame[GPU_MEM_COL].notna().any():
+        return [GPU_MEM_COL]
+    return []
 
 
 if __name__ == '__main__':
@@ -240,10 +281,10 @@ if __name__ == '__main__':
             merged = pd.merge(df1, df2, on=["sample"], suffixes=("_1", "_2"))
             merged["SP-Score_diff"] = merged["SP-Score_2"] - merged["SP-Score_1"]
             merged["TC_diff"] = merged["TC_2"] - merged["TC_1"]
-            merged["lddt_diff"] = merged["lddt_2"] - merged["lddt_1"]
-            for _lc in ["lddt_core", "lddt_muscle"]:
-                if f"{_lc}_1" in merged.columns and f"{_lc}_2" in merged.columns:
-                    merged[f"{_lc}_diff"] = merged[f"{_lc}_2"] - merged[f"{_lc}_1"]
+            _lddt_diff_cols = []
+            for _lc in struct_diff_cols(merged, "_1", "_2"):
+                merged[f"{_lc}_diff"] = merged[f"{_lc}_2"] - merged[f"{_lc}_1"]
+                _lddt_diff_cols.append(f"{_lc}_diff")
             merged["runtime_diff"] = merged["s_2"] - merged["s_1"]
 
             label1 = f"{tool1} ({run1_name})"
@@ -251,7 +292,6 @@ if __name__ == '__main__':
             print(f"\nComparison: {label2} vs {label1}")
             print(f"Positive differences indicate {label2} performed better (except runtime)\n")
 
-            _lddt_diff_cols = [c for c in ["lddt_diff", "lddt_core_diff", "lddt_muscle_diff"] if c in merged.columns]
             diff_cols = ["sample", "SP-Score_diff", "TC_diff"] + _lddt_diff_cols + ["runtime_diff"]
 
             if args.more_detailed:
@@ -304,17 +344,16 @@ if __name__ == '__main__':
 
             merged["SP-Score_diff"] = merged[f"SP-Score_{tool2}"] - merged[f"SP-Score_{tool1}"]
             merged["TC_diff"] = merged[f"TC_{tool2}"] - merged[f"TC_{tool1}"]
-            merged["lddt_diff"] = merged[f"lddt_{tool2}"] - merged[f"lddt_{tool1}"]
-            for _lc in ["lddt_core", "lddt_muscle"]:
-                if f"{_lc}_{tool1}" in merged.columns and f"{_lc}_{tool2}" in merged.columns:
-                    merged[f"{_lc}_diff"] = merged[f"{_lc}_{tool2}"] - merged[f"{_lc}_{tool1}"]
+            _lddt_diff_cols2 = []
+            for _lc in struct_diff_cols(merged, f"_{tool1}", f"_{tool2}"):
+                merged[f"{_lc}_diff"] = merged[f"{_lc}_{tool2}"] - merged[f"{_lc}_{tool1}"]
+                _lddt_diff_cols2.append(f"{_lc}_diff")
             merged["runtime_diff"] = merged[f"s_{tool2}"] - merged[f"s_{tool1}"]
 
             merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
 
             print(f"\nComparison: {tool2} vs {tool1}")
             print(f"Positive differences indicate {tool2} performed better (except runtime)\n")
-            _lddt_diff_cols2 = [c for c in ["lddt_diff", "lddt_core_diff", "lddt_muscle_diff"] if c in merged_sorted.columns]
             print(merged_sorted[["run_name", "sample", "SP-Score_diff", "TC_diff"] + _lddt_diff_cols2 + ["runtime_diff"]].to_string(index=False))
 
             print("\nSummary (mean differences by run):")
@@ -342,10 +381,10 @@ if __name__ == '__main__':
         # Compute differences (run2 - run1)
         merged["SP-Score_diff"] = merged[f"SP-Score_{run2_name}"] - merged[f"SP-Score_{run1_name}"]
         merged["TC_diff"] = merged[f"TC_{run2_name}"] - merged[f"TC_{run1_name}"]
-        merged["lddt_diff"] = merged[f"lddt_{run2_name}"] - merged[f"lddt_{run1_name}"]
-        for _lc in ["lddt_core", "lddt_muscle"]:
-            if f"{_lc}_{run2_name}" in merged.columns and f"{_lc}_{run1_name}" in merged.columns:
-                merged[f"{_lc}_diff"] = merged[f"{_lc}_{run2_name}"] - merged[f"{_lc}_{run1_name}"]
+        _lddt_diff_cols3 = []
+        for _lc in struct_diff_cols(merged, f"_{run1_name}", f"_{run2_name}"):
+            merged[f"{_lc}_diff"] = merged[f"{_lc}_{run2_name}"] - merged[f"{_lc}_{run1_name}"]
+            _lddt_diff_cols3.append(f"{_lc}_diff")
         merged["runtime_diff"] = merged[f"s_{run2_name}"] - merged[f"s_{run1_name}"]
 
         # Sort by TC difference (descending)
@@ -354,7 +393,6 @@ if __name__ == '__main__':
         # Display results
         print(f"\nComparison: {run2_name} vs {run1_name}")
         print(f"Positive differences indicate {run2_name} performed better (except runtime)\n")
-        _lddt_diff_cols3 = [c for c in ["lddt_diff", "lddt_core_diff", "lddt_muscle_diff"] if c in merged_sorted.columns]
         print(merged_sorted[["tool", "sample", "SP-Score_diff", "TC_diff"] + _lddt_diff_cols3 + ["runtime_diff"]].to_string(index=False))
 
         # Print summary statistics
@@ -409,28 +447,31 @@ if __name__ == '__main__':
             df_sorted.rename(
                 columns={"avg_pairwise_identity": "pid"}, inplace=True
             )
-            _lddt_cols = [c for c in STRUCT_SCORE_COLS if c in df_sorted.columns]
+            _lddt_cols = struct_score_cols(df_sorted)
             print(df_sorted[
                 ["run_name", "tool", "sample",
                  "num_seq", "max_len", "avg_len", "pid",
                  "SP-Score", "TC"] + _lddt_cols + ["s", "h:m:s", "success"]
             ].to_string(index=False))
         else:
-            _lddt_cols = [c for c in STRUCT_SCORE_COLS if c in df_sorted.columns]
+            _lddt_cols = struct_score_cols(df_sorted)
+            _gpu_cols = gpu_mem_cols(df_sorted)
             print(df_sorted[
-                ["run_name", "tool", "sample", "SP-Score", "TC"] + _lddt_cols + ["s", "h:m:s", "max_rss", "success"]
+                ["run_name", "tool", "sample", "SP-Score", "TC"] + _lddt_cols
+                + ["s", "h:m:s", "max_rss"] + _gpu_cols + ["success"]
             ].to_string(index=False))
     else:
         with pd.option_context('display.max_columns', None, 'display.width', None):
-            _lddt_cols = [c for c in STRUCT_SCORE_COLS if c in df.columns]
+            _lddt_cols = struct_score_cols(df)
+            _cols = ["SP-Score", "TC"] + _lddt_cols + ["s"] + gpu_mem_cols(df) + ["success"]
             print(
                 df.groupby(
                     ["run_name", "tool"]
-                )[["SP-Score", "TC"] + _lddt_cols + ["s", "success"]].mean()
+                )[_cols].mean()
             )
             print("Total:")
             print(
-                df.groupby(["tool"])[["SP-Score", "TC"] + _lddt_cols + ["s", "success"]].mean()
+                df.groupby(["tool"])[_cols].mean()
             )
 
     if args.barplots or args.barplot_lddt:
