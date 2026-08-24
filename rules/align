@@ -14,7 +14,7 @@ def resolve_struct_path(wildcards):
     struct_dir = config["data_path"] + "/" + config.get("struct_data", "")
     basename = os.path.splitext(wildcards.sample)[0]
     matches = sorted(glob.glob(struct_dir + "/" + basename + ".*"))
-    return matches[0]
+    return matches[0] if matches else ""
 
 
 rule align:
