@@ -33,8 +33,8 @@ def barplot(
         Ordered list of tool names to include. If *None* all tools in *df* are
         used, sorted by mean TC score descending.
     output_path:
-        File path to save the figure (PNG). If *None* the figure is saved as
-        ``<run_name>_barplot.png`` in the current working directory.
+        File path to save the figure (PDF). If *None* the figure is saved as
+        ``<run_name>_barplot.pdf`` in the current working directory.
     title:
         Title for the figure. Defaults to *run_name*.
     font_size:
@@ -132,7 +132,8 @@ def barplot(
     plt.tight_layout()
 
     if output_path is None:
-        output_path = f"{run_name}_barplot.png"
+        output_path = f"{run_name}_barplot.pdf"
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     print(f"Saved bar plot to {output_path}")
@@ -162,8 +163,8 @@ def barplot_lddt(
         Ordered list of tool names to include. If *None* all tools in *df* are
         used, sorted by mean LDDT descending.
     output_path:
-        File path to save the figure (PNG). If *None* the figure is saved as
-        ``<run_name>_barplot_lddt.png`` in the current working directory.
+        File path to save the figure (PDF). If *None* the figure is saved as
+        ``<run_name>_barplot_lddt.pdf`` in the current working directory.
     title:
         Title for the figure. Defaults to *run_name*.
     font_size:
@@ -251,7 +252,8 @@ def barplot_lddt(
     plt.tight_layout()
 
     if output_path is None:
-        output_path = f"{run_name}_barplot_{lddt_col}.png"
+        output_path = f"{run_name}_barplot_{lddt_col}.pdf"
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     print(f"Saved LDDT bar plot to {output_path}")

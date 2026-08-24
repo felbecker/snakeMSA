@@ -1,10 +1,20 @@
 # type: ignore
 import sys
+import glob
 
 # Out-of-process GPU memory tracking, so that any GPU tool can be measured
 # without instrumenting it (see tools/gpu_monitor.py).
 sys.path.insert(0, os.path.join(workflow.basedir, "tools"))
 import gpu_monitor
+
+
+def resolve_struct_path(wildcards):
+    if "struct_data" not in config:
+        return ""
+    struct_dir = config["data_path"] + "/" + config.get("struct_data", "")
+    basename = os.path.splitext(wildcards.sample)[0]
+    matches = sorted(glob.glob(struct_dir + "/" + basename + ".*"))
+    return matches[0]
 
 
 rule align:
@@ -25,11 +35,7 @@ rule align:
     params:
         workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
         tree="outputs/"+config["name"]+"/{tool}/trees/{sample}/",
-        struct=lambda wildcards: (
-            config["data_path"] + "/" + config.get("struct_data", "") + "/"
-            + os.path.splitext(wildcards.sample)[0] + ".fasta"
-            if "struct_data" in config else ""
-        ),
+        struct=resolve_struct_path,
         emb=lambda wildcards: (
             config["data_path"] + "/" + config.get("emb_data", "") + "/"
             + os.path.splitext(wildcards.sample)[0] + ".emb"

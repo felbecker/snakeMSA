@@ -496,10 +496,10 @@ if __name__ == '__main__':
         plot_title = args.barplot_title if args.barplot_title else name
         plot_fontsize = args.barplot_fontsize
         if args.barplots:
-            barplot(df, run_name=name, tools=tool_order, output_path=f"{name}_barplot.png",
+            barplot(df, run_name=name, tools=tool_order, output_path=f"plots/{name}_barplot.pdf",
                     title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map)
         if args.barplot_lddt:
             lddt_col = args.barplot_lddt
             barplot_lddt(df, run_name=name, tools=tool_order, lddt_col=lddt_col,
-                         output_path=f"{name}_barplot_{lddt_col}.png",
+                         output_path=f"plots/{name}_barplot_{lddt_col}.pdf",
                          title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map)
