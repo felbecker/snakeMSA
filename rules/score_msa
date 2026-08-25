@@ -44,7 +44,7 @@ rule score_msa:
     threads: config["score_threads"] if "score_threads" in config else 8
     resources:
         mem_mb = config["score_mem"] if "score_mem" in config else 16000,
-        runtime = "120m"
+        runtime = config["score_runtime"] if "score_runtime" in config else "10m",
     log:
         stdout="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.log",
         stderr="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.err",
