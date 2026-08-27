@@ -14,7 +14,11 @@ def resolve_struct_path(wildcards):
     struct_dir = config["data_path"] + "/" + config.get("struct_data", "")
     basename = os.path.splitext(wildcards.sample)[0]
     matches = sorted(glob.glob(struct_dir + "/" + basename + ".*"))
-    return matches[0] if matches else ""
+    if matches:
+        return matches[0]
+    # struct files may have no extension at all
+    no_ext = struct_dir + "/" + basename
+    return no_ext if os.path.exists(no_ext) else ""
 
 
 rule align:
