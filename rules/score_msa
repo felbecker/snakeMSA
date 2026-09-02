@@ -3,6 +3,34 @@
 GPU_MEM_COLUMN = "max_gpu_mem"
 
 
+def lookup_coverage(lookup_path, msa_path):
+    """Find MSA headers that have no entry in a foldmason database lookup.
+
+    foldmason resolves every MSA header through <db>.lookup, and a miss returns
+    SIZE_MAX, so msa2lddt aborts with nothing but
+    "Invalid database read for id=18446744073709551615". Lookup names come from
+    the PDB file stem, while structure-aware aligners often append a chain id
+    ("..._A"), which silently costs a whole benchmark its LDDT column. Checking
+    here turns that into a message naming the offending headers.
+
+    Returns (n_missing, n_total, first few missing headers).
+    """
+    with open(lookup_path) as lookup_file:
+        names = {
+            fields[1]
+            for fields in (line.rstrip("\n").split("\t") for line in lookup_file)
+            if len(fields) > 1
+        }
+    with open(msa_path) as msa_file:
+        headers = [
+            line[1:].split()[0]
+            for line in msa_file
+            if line.startswith(">") and line[1:].split()
+        ]
+    missing = [h for h in headers if h not in names]
+    return len(missing), len(headers), missing[:3]
+
+
 def merge_gpu_column(bench_path, column=GPU_MEM_COLUMN):
     """Append the GPU memory sidecar value to a snakemake benchmark file.
 
@@ -128,15 +156,30 @@ rule score_msa:
                         # foldmason (msa2lddt in particular) can segfault on certain
                         # inputs due to bugs in the upstream binary; don't let that
                         # abort the whole run, just record -1 for this sample.
+                        # The reason always goes to the log: a systematic failure
+                        # here turns the whole lddt column into -1, which is easy
+                        # to mistake for "not requested" if nothing says otherwise.
                         try:
                             shell(
-                                "foldmason createdb {params.pdb} {params.workdir}/foldmason_db"
+                                "foldmason createdb {params.pdb} {params.workdir}foldmason_db"
                                 + " --threads {threads}"
                                 + " >> {log.stdout} 2>> {log.stderr}"
                             )
+                            # Catch a name mismatch between the aligner and the
+                            # database before msa2lddt turns it into a bare
+                            # SIZE_MAX id (see lookup_coverage).
+                            n_missing, n_total, examples = lookup_coverage(
+                                params.workdir + "foldmason_db.lookup", output.proj
+                            )
+                            if n_missing:
+                                raise RuntimeError(
+                                    f"{n_missing}/{n_total} MSA headers absent from "
+                                    f"foldmason_db.lookup (e.g. {examples}) -- the "
+                                    "aligner and foldmason disagree on sequence names"
+                                )
                             # Standard foldmason LDDT
                             lddt_output = shell(
-                                "foldmason msa2lddt {params.workdir}/foldmason_db {output.proj}"
+                                "foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
                                 + " --threads {threads}"
                                 + " 2>> {log.stderr}",
                                 read=True
@@ -148,7 +191,7 @@ rule score_msa:
                             lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
                             # Foldmason LDDT core (conserved columns only)
                             lddt_core_output = shell(
-                                "foldmason msa2lddt {params.workdir}/foldmason_db {output.proj}"
+                                "foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
                                 + " --pair-threshold 1.0 --only-scoring-cols true"
                                 + " --threads {threads}"
                                 + " 2>> {log.stderr}",
@@ -159,7 +202,15 @@ rule score_msa:
                                 if line.startswith("Average MSA LDDT:")
                             ), None)
                             lddt_core = lddt_core_match.split(":")[1].strip() if lddt_core_match else "-1"
-                        except Exception:
+                        except Exception as foldmason_error:
+                            warning = (
+                                f"WARNING: foldmason LDDT unavailable for "
+                                f"{sample_name}, recording -1: "
+                                f"{type(foldmason_error).__name__}: {foldmason_error}"
+                            )
+                            print(warning)
+                            with open(log.stderr, "a") as err_file:
+                                print(warning, file=err_file)
                             lddt = "-1"
                             lddt_core = "-1"
                     # pylddt muscle LDDT and DALI Z score
@@ -182,9 +233,10 @@ rule score_msa:
                             dali_z = "-1"
                         else:
                             dali_z_output = shell(
-                                "python pylddt/src/daliz.py"
+                                "python pylddt/src/daliz_par.py"
                                 + " --msa {output.proj}"
                                 + " --pdbfiles " + pdbfiles_txt
+                                + " --threads {threads}"
                                 + " 2>> {log.stderr}",
                                 read=True
                             )
