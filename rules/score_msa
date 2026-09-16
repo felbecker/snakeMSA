@@ -31,6 +31,71 @@ def lookup_coverage(lookup_path, msa_path):
     return len(missing), len(headers), missing[:3]
 
 
+def normalize_msa(src_path, dst_path):
+    """Copy an MSA, rewriting it as plain aligned FASTA (all gaps are "-" and
+    all residues are uppercase).
+    """
+    with open(src_path) as src_file, open(dst_path, "w") as dst_file:
+        for line in src_file:
+            if line.startswith(">"):
+                dst_file.write(line)
+            else:
+                dst_file.write(line.replace(".", "-").upper())
+
+
+def chain_length_coverage(db_prefix, msa_path):
+    """Find MSA rows whose residue count disagrees with the structure database.
+
+    foldmason derives the chain length from the MSA row itself and passes it to
+    Coordinate16::read without ever checking it against the stored entry, so a
+    row that is too long walks off the end of the mmap. Catch the mismatch here
+    rather than as a flaky segfault inside msa2lddt.
+
+    Returns (n_mismatched, n_total, first few "name (msa vs db)" descriptions).
+    """
+    keys = {}
+    with open(db_prefix + ".lookup") as lookup_file:
+        for line in lookup_file:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) > 1:
+                keys[fields[1]] = fields[0]
+
+    # DBReader entries carry a trailing newline and null terminator
+    lengths = {}
+    with open(db_prefix + ".index") as index_file:
+        for line in index_file:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) > 2:
+                lengths[fields[0]] = int(fields[2]) - 2
+
+    mismatched = []
+    total = 0
+    name = None
+    residues = 0
+
+    def check(name, residues):
+        if name is None:
+            return
+        db_len = lengths.get(keys.get(name))
+        if db_len is not None and db_len != residues:
+            mismatched.append("%s (%d vs %d)" % (name, residues, db_len))
+
+    with open(msa_path) as msa_file:
+        for line in msa_file:
+            if line.startswith(">"):
+                check(name, residues)
+                header = line[1:].split()
+                name = header[0] if header else None
+                residues = 0
+                total += 1
+            elif name is not None:
+                # count the way foldmason's contract() does: everything
+                # that is not "-" is a residue, dots included
+                residues += sum(1 for c in line.strip() if c != "-")
+    check(name, residues)
+    return len(mismatched), total, mismatched[:3]
+
+
 def merge_gpu_column(bench_path, column=GPU_MEM_COLUMN):
     """Append the GPU memory sidecar value to a snakemake benchmark file.
 
@@ -80,14 +145,10 @@ rule score_msa:
         workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
         ref=lambda wildcards: (
             ref_path
-            if os.path.exists(ref_path := config["data_path"]+"/aligned/"+wildcards.sample)
+            if os.path.exists(ref_path := data_file("aligned", wildcards.sample))
             else ""
         ),
-        pdb=lambda wildcards: (
-            config["data_path"] + "/" + config.get("pdb", "") + "/"
-            + os.path.splitext(wildcards.sample)[0]
-            if "pdb" in config else ""
-        ),
+        pdb=resolve_pdb_path,
         lddt_muscle_only=bool(config.get("lddt_muscle_only", False))
     run:
         # Ensure log directory exists before any shell calls write to it
@@ -109,9 +170,9 @@ rule score_msa:
 
             success_flag = 1
             if params.ref == "":
-                # no reference MSA available: skip projection/FastSP scoring
-                import shutil
-                shutil.copyfile(input.est, output.proj)
+                # no reference MSA available: skip projection/FastSP scoring.
+                # foldmason treats "." as residues
+                normalize_msa(input.est, output.proj)
                 values = ['-1'] * 7
             else:
                 # first project the estimated msa w.r.t. the reference sequences
@@ -176,6 +237,19 @@ rule score_msa:
                                     f"{n_missing}/{n_total} MSA headers absent from "
                                     f"foldmason_db.lookup (e.g. {examples}) -- the "
                                     "aligner and foldmason disagree on sequence names"
+                                )
+                            # Catch a residue-count mismatch before msa2lddt
+                            # turns it into an out-of-bounds read (see
+                            # chain_length_coverage).
+                            n_bad, n_rows, bad_examples = chain_length_coverage(
+                                params.workdir + "foldmason_db", output.proj
+                            )
+                            if n_bad:
+                                raise RuntimeError(
+                                    f"{n_bad}/{n_rows} MSA rows disagree with the "
+                                    f"foldmason database on residue count "
+                                    f"(e.g. {bad_examples}) -- msa2lddt would read "
+                                    "past the end of the C-alpha entries"
                                 )
                             # Standard foldmason LDDT
                             lddt_output = shell(
@@ -290,8 +364,8 @@ rule concat_scores:
         shell("echo -n 'sample success ' > {output}")
         # write the header
         shell("java -jar FastSP/FastSP.jar"
-                +" -r " + config["data_path"]+"/aligned/"+SAMPLES[0]
-                +" -e " + config["data_path"]+"/aligned/"+SAMPLES[0]
+                +" -r " + data_file("aligned", SAMPLES[0])
+                +" -e " + data_file("aligned", SAMPLES[0])
                 + " | awk '{{print $1}}' \
                     | tr '\n' ' ' >> {output}")
         shell("echo -n 'lddt lddt_core lddt_muscle dali_z ' >> {output}")

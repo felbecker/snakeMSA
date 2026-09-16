@@ -11,19 +11,19 @@ import gpu_monitor
 def resolve_struct_path(wildcards):
     if "struct_data" not in config:
         return ""
-    struct_dir = config["data_path"] + "/" + config.get("struct_data", "")
+    struct_dir = data_file(config["struct_data"])
     basename = os.path.splitext(wildcards.sample)[0]
-    matches = sorted(glob.glob(struct_dir + "/" + basename + ".*"))
+    matches = sorted(glob.glob(os.path.join(struct_dir, basename + ".*")))
     if matches:
         return matches[0]
     # struct files may have no extension at all
-    no_ext = struct_dir + "/" + basename
+    no_ext = os.path.join(struct_dir, basename)
     return no_ext if os.path.exists(no_ext) else ""
 
 
 rule align:
     input:
-        config["data_path"]+"/unaligned/{sample}"
+        data_file("unaligned", "{sample}")
     output:
         "outputs/"+config["name"]+"/{tool}/alignments/{sample}"
     threads: config["align_threads"] if "align_threads" in config else 8
@@ -41,15 +41,13 @@ rule align:
         tree="outputs/"+config["name"]+"/{tool}/trees/{sample}/",
         struct=resolve_struct_path,
         emb=lambda wildcards: (
-            config["data_path"] + "/" + config.get("emb_data", "") + "/"
-            + os.path.splitext(wildcards.sample)[0] + ".emb"
+            data_file(
+                config["emb_data"],
+                os.path.splitext(wildcards.sample)[0] + ".emb"
+            )
             if "emb_data" in config else ""
         ),
-        pdb=lambda wildcards: (
-            config["data_path"] + "/" + config.get("pdb", "") + "/"
-            + os.path.splitext(wildcards.sample)[0]
-            if "pdb" in config else ""
-        ),
+        pdb=resolve_pdb_path,
         gpu_bench="outputs/"+config["name"]+"/{tool}/benchmarks/{sample}.gpu"
     run:
         tool_command=config["tools"][wildcards.tool]["command"]
