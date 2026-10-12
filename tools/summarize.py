@@ -49,6 +49,22 @@ argparser.add_argument(
     "and TC differences per sample."
 )
 argparser.add_argument(
+    '--show_failed', action='store_true',
+    help="Print the samples that were not successful (per run and tool) "
+         "and exit."
+)
+argparser.add_argument(
+    '--delete_failed', action='store_true',
+    help="Delete the alignment and score file of every unsuccessful sample, "
+         "plus the results/<run>/<tool>.out file of each affected tool, so "
+         "that snakemake recomputes them. Prints what it deletes and exits."
+)
+argparser.add_argument(
+    '--delete_failed_dry', action='store_true',
+    help="Like --delete_failed, but only print the files that would be "
+         "deleted."
+)
+argparser.add_argument(
     '--all', action='store_true',
     help="When multiple run names are given, shows all tools of all runs."\
     " Per default, only the intersection of tools is shown."
@@ -181,6 +197,68 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
 
 
 
+def sample_stem(filename: str) -> str:
+    """Sample name as written to the .out file: the file name without its
+    extension (see the score_msa rule)."""
+    return os.path.basename(filename).rsplit('.', 1)[0]
+
+
+def find_failed(frame: pd.DataFrame) -> pd.DataFrame:
+    """The (run_name, tool, sample) rows that were not successful."""
+    failed = frame[frame["success"] == 0]
+    return failed[["run_name", "tool", "sample"]].sort_values(
+        ["run_name", "tool", "sample"]
+    )
+
+
+def failed_files(run_name: str, tool: str, sample: str) -> List[str]:
+    """Existing alignment and score files of a sample."""
+    tool_dir = os.path.join("outputs", run_name, tool)
+    # the .out file lists samples without extension, files carry it
+    # (alignments/<sample>.fa, scores/<sample>.fa.score)
+    candidates = glob.glob(os.path.join(tool_dir, "alignments", "*"))
+    candidates += glob.glob(os.path.join(tool_dir, "scores", "*.score"))
+    return [
+        f for f in candidates
+        if sample_stem(f[:-len(".score")] if f.endswith(".score") else f)
+        == sample
+    ]
+
+
+def show_failed(failed: pd.DataFrame) -> None:
+    if failed.empty:
+        print("No failed samples.")
+        return
+    for (run_name, tool), group in failed.groupby(["run_name", "tool"]):
+        print(f"{run_name} / {tool}: {len(group)} failed")
+        for sample in group["sample"]:
+            print(f"  {sample}")
+
+
+def delete_failed(failed: pd.DataFrame, dry: bool = False) -> None:
+    """Delete alignments and scores of failed samples and the stale .out file
+    of every tool that had failures. With ``dry``, only print them."""
+    if failed.empty:
+        print("No failed samples.")
+        return
+    n_deleted = 0
+    for (run_name, tool), group in failed.groupby(["run_name", "tool"]):
+        files = [
+            f for sample in group["sample"]
+            for f in failed_files(run_name, tool, str(sample))
+        ]
+        out_file = os.path.join("results", run_name, f"{tool}.out")
+        if os.path.isfile(out_file):
+            files.append(out_file)
+        for f in files:
+            if not dry:
+                os.remove(f)
+            print(f"{'would delete' if dry else 'deleted'} {f}")
+        n_deleted += len(files)
+        print(f"{run_name} / {tool}: {len(group)} failed samples")
+    print(f"{'Would delete' if dry else 'Deleted'} {n_deleted} file(s).")
+
+
 def wanted_struct_score_cols() -> List[str]:
     """The structural scores the user asked for: only lddt_muscle by default."""
     return STRUCT_SCORE_COLS if args.all_struct_scores else DEFAULT_STRUCT_SCORE_COLS
@@ -266,6 +344,14 @@ if __name__ == '__main__':
             common_tools = {tool1, tool2}
 
     df = make_merged_df(run_names, common_tools)
+
+    if args.show_failed or args.delete_failed or args.delete_failed_dry:
+        failed_df = find_failed(df)
+        if args.show_failed:
+            show_failed(failed_df)
+        if args.delete_failed or args.delete_failed_dry:
+            delete_failed(failed_df, dry=not args.delete_failed)
+        sys.exit(0)
 
     if args.average_replicas:
         df["tool"] = df["tool"].str.replace(r'_replica_\d+$', '', regex=True)
