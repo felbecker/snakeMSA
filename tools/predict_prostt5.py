@@ -7,14 +7,19 @@ output directories, e.g. to build data/homfam/prostt5_outputs:
     python tools/predict_prostt5.py data/homfam/unaligned \\
         data/homfam/prostt5_outputs
 
+With several visible GPUs, one predict job per GPU runs in parallel (each job
+sees only its own GPU), so the output of the jobs may interleave.
+
 Run it in an environment with the learnMSA PyTorch extras (learnMSAtorch).
 Existing outputs are kept, so an interrupted run can simply be restarted.
 """
 
 import argparse
 import os
+import queue
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 #: Suffixes dropped from the file name to get the family name. Other dots are
@@ -48,14 +53,38 @@ def collect_inputs(input_dir: Path) -> dict[str, Path]:
     return inputs
 
 
+def parse_gpus(spec: str) -> list[str]:
+    """Splits a comma-separated GPU list; '' and '-1' mean no GPUs."""
+    gpus = [g.strip() for g in spec.split(",") if g.strip()]
+    return [] if gpus == ["-1"] else gpus
+
+
+def visible_gpus() -> list[str]:
+    """GPU ids from CUDA_VISIBLE_DEVICES or, if unset, from nvidia-smi."""
+    if "CUDA_VISIBLE_DEVICES" in os.environ:
+        return parse_gpus(os.environ["CUDA_VISIBLE_DEVICES"])
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index", "--format=csv,noheader"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return []
+    return [line.strip() for line in out.splitlines() if line.strip()]
+
+
 def predict(
     fasta: Path,
     npz: Path,
     fasta_out: Path | None,
     learnmsa: Path,
     extra_args: list[str],
+    gpu: str | None = None,
 ) -> None:
-    """Runs predict_3di on one file. Outputs appear only on success."""
+    """Runs predict_3di on one file. Outputs appear only on success.
+
+    If ``gpu`` is given, the job sees only that GPU.
+    """
     # Write under temporary names so that an interrupted run never leaves a
     # truncated output behind that later runs would skip.
     tmp_npz = npz.with_suffix(".tmp.npz")
@@ -71,6 +100,8 @@ def predict(
     env["PYTHONPATH"] = os.pathsep.join(
         [str(learnmsa)] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])
     )
+    if gpu is not None:
+        env["CUDA_VISIBLE_DEVICES"] = gpu
     try:
         subprocess.run(cmd, env=env, check=True)
         # os.replace also overwrites existing read-only files.
@@ -88,7 +119,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__.split("\n\n")[0],
         epilog="Further arguments (--device, --cache_dir, --split_length, "
-        "--batch_memory, --silent) are passed on to predict_3di.",
+        "--batch_memory, --silent) are passed on to predict_3di. With "
+        "--device, a single job runs on that device.",
     )
     parser.add_argument(
         "input_dir", type=Path,
@@ -112,6 +144,11 @@ def main() -> None:
         help="learnMSA checkout providing learnMSA.structure.predict_3di "
         "(default: %(default)s)."
     )
+    parser.add_argument(
+        "--gpus", type=parse_gpus, default=None,
+        help="Comma-separated GPU ids, one parallel job per GPU (default: "
+        "CUDA_VISIBLE_DEVICES, else all GPUs listed by nvidia-smi)."
+    )
     args, extra_args = parser.parse_known_args()
 
     inputs = collect_inputs(args.input_dir)
@@ -121,7 +158,19 @@ def main() -> None:
     if args.fasta_dir is not None:
         args.fasta_dir.mkdir(parents=True, exist_ok=True)
 
+    gpus = visible_gpus() if args.gpus is None else args.gpus
+    if any(a == "--device" or a.startswith("--device=") for a in extra_args):
+        if len(gpus) > 1:
+            print("--device given: running a single job.", flush=True)
+        gpus = []
+    print(
+        f"Running {max(1, len(gpus))} job(s) in parallel"
+        + (f" on GPU(s) {','.join(gpus)}." if gpus else "."),
+        flush=True,
+    )
+
     done, skipped, failed = [], [], []
+    todo = []
     for i, (name, path) in enumerate(inputs.items(), start=1):
         npz = args.npz_dir / f"{name}.3di.npz"
         fasta_out = (
@@ -133,13 +182,38 @@ def main() -> None:
             print(f"[{i}/{len(inputs)}] {name}: skipped (exists)", flush=True)
             skipped.append(name)
             continue
-        print(f"[{i}/{len(inputs)}] {name}", flush=True)
+        todo.append((i, name, path, npz, fasta_out))
+
+    # Hands each running job one free GPU (None without GPUs).
+    free_gpus: queue.Queue[str | None] = queue.Queue()
+    for gpu in gpus or [None]:
+        free_gpus.put(gpu)
+
+    def run(i, name, path, npz, fasta_out):
+        gpu = free_gpus.get()
         try:
-            predict(path, npz, fasta_out, args.learnmsa, extra_args)
-            done.append(name)
-        except subprocess.CalledProcessError as e:
-            print(f"{name}: failed ({e})", file=sys.stderr, flush=True)
-            failed.append(name)
+            on_gpu = f" (GPU {gpu})" if gpu is not None else ""
+            print(f"[{i}/{len(inputs)}] {name}{on_gpu}", flush=True)
+            predict(path, npz, fasta_out, args.learnmsa, extra_args, gpu)
+        finally:
+            free_gpus.put(gpu)
+
+    executor = ThreadPoolExecutor(max_workers=max(1, len(gpus)))
+    try:
+        futures = {executor.submit(run, *job): job[1] for job in todo}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                future.result()
+                done.append(name)
+            except subprocess.CalledProcessError as e:
+                print(f"{name}: failed ({e})", file=sys.stderr, flush=True)
+                failed.append(name)
+    except KeyboardInterrupt:
+        # The jobs share our process group and receive the SIGINT as well.
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    executor.shutdown()
 
     print(
         f"Done: {len(done)}, skipped: {len(skipped)}, failed: {len(failed)}."
