@@ -147,6 +147,11 @@ def main() -> None:
         "--prefix", type=Path, default=Path("data/size_scaling"),
         help="Base directory for storing subsets."
     )
+    parser.add_argument(
+        "--dry", action="store_true",
+        help="Do not write any files. Only report how many families support "\
+            "the given depths."
+    )
     args = parser.parse_args()
 
     out_names = [d.name for d in args.data]
@@ -180,9 +185,8 @@ def main() -> None:
             print(f"Skipping {main_file.name}: no matching file in {directory}.")
             continue
 
-        datasets = [load_dataset(f) for f in data_files]
+        fasta = load_dataset(main_file)
         ref_fasta = SequenceDataset(ref_file)
-        fasta = datasets[0]
         if fasta.num_seq < max_depth:
             print(
                 f"Skipping {main_file.name} (to include, reduce max(D))."
@@ -193,6 +197,10 @@ def main() -> None:
                 f"Skipping {main_file.name} (to include, increase min(D))."
             )
             continue
+        if args.dry:
+            c += 1
+            continue
+        datasets = [fasta] + [load_dataset(f) for f in data_files[1:]]
         try:
             # Bring all datasets into the order of the first one, such that
             # the same indices refer to the same sequences everywhere.
@@ -232,7 +240,10 @@ def main() -> None:
                     shutil.copyfile(ref_file, ref_path)
                 old_indices = subset
 
-    print(f"Processed {c} families.")
+    if args.dry:
+        print(f"{c} families support the depths {D}.")
+    else:
+        print(f"Processed {c} families.")
 
 
 if __name__ == "__main__":
