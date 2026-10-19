@@ -71,6 +71,13 @@ Please note: by default, learnMSA expects a GPU partition (and we recommend to u
 
 Job resources can be customized in the configuration file. See `configs/default.json`.
 
+## Large experiments: cleanup
+
+Set `"cleanup": true` in the configuration file (or pass `--config cleanup=true`) when the outputs of all samples do not fit into storage at once.
+Each sample is then aligned and scored in a single job, after which its alignment, projected alignment and working directory are deleted.
+Scores, benchmarks and logs are kept, and the results files are identical to a run without cleanup (the benchmark still measures only the alignment step).
+The job requests the alignment threads and GPU, the larger of `align_mem` and `score_mem`, and `align_runtime` plus `score_runtime`.
+
 ## Specific experiments
 
 ### Size scaling

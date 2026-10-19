@@ -128,214 +128,227 @@ def merge_gpu_column(bench_path, column=GPU_MEM_COLUMN):
     os.replace(tmp_path, bench_path)
 
 
-rule score_msa:
-    input:
-        est = "outputs/"+config["name"]+"/{tool}/alignments/{sample}",
-    output:
-        proj = "outputs/"+config["name"]+"/{tool}/projections/{sample}",
-        score = "outputs/"+config["name"]+"/{tool}/scores/{sample}.score"
-    threads: config["score_threads"] if "score_threads" in config else 8
-    resources:
-        mem_mb = config["score_mem"] if "score_mem" in config else 16000,
-        runtime = config["score_runtime"] if "score_runtime" in config else "10m",
-    log:
-        stdout="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.log",
-        stderr="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.err",
-    params:
-        workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
-        ref=lambda wildcards: (
-            ref_path
-            if os.path.exists(ref_path := data_file("aligned", wildcards.sample))
-            else ""
-        ),
-        pdb=resolve_pdb_path,
-        lddt_muscle_only=bool(config.get("lddt_muscle_only", False))
-    run:
-        # Ensure log directory exists before any shell calls write to it
-        os.makedirs(os.path.dirname(log.stdout), exist_ok=True)
+def resolve_ref_path(wildcards):
+    ref_path = data_file("aligned", wildcards.sample)
+    return ref_path if os.path.exists(ref_path) else ""
 
-        msa_failed = False
-        with open(input.est, "r") as est_file:
-            if est_file.readline().strip() == "FAILED":
-                msa_failed = True
 
-        # strip the extension from the sample name
-        sample_name = os.path.basename(wildcards.sample).rsplit('.', 1)[0]
+def score_sample(input, output, params, log, threads, wildcards):
+    """Score the MSA input.est, writing output.proj and output.score.
 
-        # Create folders if they do not exist
-        os.makedirs(os.path.dirname(output.proj), exist_ok=True)
-        os.makedirs(os.path.dirname(output.score), exist_ok=True)
+    Shared by the score_msa rule and the fused align_and_score rule (cleanup
+    mode). The arguments only need attribute access to the fields used here;
+    the shell() calls format against these parameter names.
+    """
+    # Ensure log directory exists before any shell calls write to it
+    os.makedirs(os.path.dirname(log.stdout), exist_ok=True)
 
-        if not msa_failed:
+    msa_failed = False
+    # binary mode: the MSA may be gzip compressed (learnMSA --compress)
+    with open(input.est, "rb") as est_file:
+        if est_file.readline().strip() == b"FAILED":
+            msa_failed = True
 
-            success_flag = 1
-            if params.ref == "":
-                # no reference MSA available: skip projection/FastSP scoring.
-                # foldmason treats "." as residues
-                normalize_msa(input.est, output.proj)
-                values = ['-1'] * 7
-            else:
-                # first project the estimated msa w.r.t. the reference sequences
-                shell(
-                    "python tools/project_msa.py"
-                    + " --msa {input.est}"
-                    + " --ref {params.ref}"
-                    + " --out {output.proj}"
-                    + " >> {log.stdout} 2>> {log.stderr}"
-                )
-                # compute scores
-                fastsp_output = shell(
-                    "java -jar FastSP/FastSP.jar -r {params.ref} -e {output.proj} -mlr"
-                    + " 2>> {log.stderr}",
-                    read=True
-                )
-                # write it with the scores into a single line
-                values = [
-                    line.split()[1] for line in fastsp_output.strip().split('\n')
-                ]
+    # strip the extension from the sample name
+    sample_name = os.path.basename(wildcards.sample).rsplit('.', 1)[0]
 
-            # compute lddt scores using foldmason and pylddt
-            if params.pdb == "":
+    # Create folders if they do not exist
+    os.makedirs(os.path.dirname(output.proj), exist_ok=True)
+    os.makedirs(os.path.dirname(output.score), exist_ok=True)
+
+    if not msa_failed:
+
+        success_flag = 1
+        if params.ref == "":
+            # no reference MSA available: skip projection/FastSP scoring.
+            # foldmason treats "." as residues
+            normalize_msa(input.est, output.proj)
+            values = ['-1'] * 7
+        else:
+            # first project the estimated msa w.r.t. the reference sequences
+            shell(
+                "python tools/project_msa.py"
+                + " --msa {input.est}"
+                + " --ref {params.ref}"
+                + " --out {output.proj}"
+                + " >> {log.stdout} 2>> {log.stderr}"
+            )
+            # compute scores
+            fastsp_output = shell(
+                "java -jar FastSP/FastSP.jar -r {params.ref} -e {output.proj} -mlr"
+                + " 2>> {log.stderr}",
+                read=True
+            )
+            # write it with the scores into a single line
+            values = [
+                line.split()[1] for line in fastsp_output.strip().split('\n')
+            ]
+
+        # compute lddt scores using foldmason and pylddt
+        if params.pdb == "":
+            lddt = "-1"
+            lddt_core = "-1"
+            lddt_muscle = "-1"
+            dali_z = "-1"
+        else:
+            if not os.path.exists(params.pdb):
                 lddt = "-1"
                 lddt_core = "-1"
                 lddt_muscle = "-1"
                 dali_z = "-1"
             else:
-                if not os.path.exists(params.pdb):
+                os.makedirs(params.workdir, exist_ok=True)
+                if params.lddt_muscle_only:
+                    # only pylddt's muscle LDDT is requested; foldmason is
+                    # the expensive part, so skip it entirely
                     lddt = "-1"
                     lddt_core = "-1"
-                    lddt_muscle = "-1"
-                    dali_z = "-1"
                 else:
-                    os.makedirs(params.workdir, exist_ok=True)
-                    if params.lddt_muscle_only:
-                        # only pylddt's muscle LDDT is requested; foldmason is
-                        # the expensive part, so skip it entirely
+                    # foldmason (msa2lddt in particular) can segfault on certain
+                    # inputs due to bugs in the upstream binary; don't let that
+                    # abort the whole run, just record -1 for this sample.
+                    # The reason always goes to the log: a systematic failure
+                    # here turns the whole lddt column into -1, which is easy
+                    # to mistake for "not requested" if nothing says otherwise.
+                    try:
+                        shell(
+                            "foldmason createdb {params.pdb} {params.workdir}foldmason_db"
+                            + " --threads {threads}"
+                            + " >> {log.stdout} 2>> {log.stderr}"
+                        )
+                        # Catch a name mismatch between the aligner and the
+                        # database before msa2lddt turns it into a bare
+                        # SIZE_MAX id (see lookup_coverage).
+                        n_missing, n_total, examples = lookup_coverage(
+                            params.workdir + "foldmason_db.lookup", output.proj
+                        )
+                        if n_missing:
+                            raise RuntimeError(
+                                f"{n_missing}/{n_total} MSA headers absent from "
+                                f"foldmason_db.lookup (e.g. {examples}) -- the "
+                                "aligner and foldmason disagree on sequence names"
+                            )
+                        # Catch a residue-count mismatch before msa2lddt
+                        # turns it into an out-of-bounds read (see
+                        # chain_length_coverage).
+                        n_bad, n_rows, bad_examples = chain_length_coverage(
+                            params.workdir + "foldmason_db", output.proj
+                        )
+                        if n_bad:
+                            raise RuntimeError(
+                                f"{n_bad}/{n_rows} MSA rows disagree with the "
+                                f"foldmason database on residue count "
+                                f"(e.g. {bad_examples}) -- msa2lddt would read "
+                                "past the end of the C-alpha entries"
+                            )
+                        # Standard foldmason LDDT
+                        lddt_output = shell(
+                            "foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
+                            + " --threads {threads}"
+                            + " 2>> {log.stderr}",
+                            read=True
+                        )
+                        lddt_match = next((
+                            line for line in lddt_output.splitlines()
+                            if line.startswith("Average MSA LDDT:")
+                        ), None)
+                        lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
+                        # Foldmason LDDT core (conserved columns only)
+                        lddt_core_output = shell(
+                            "foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
+                            + " --pair-threshold 1.0 --only-scoring-cols true"
+                            + " --threads {threads}"
+                            + " 2>> {log.stderr}",
+                            read=True
+                        )
+                        lddt_core_match = next((
+                            line for line in lddt_core_output.splitlines()
+                            if line.startswith("Average MSA LDDT:")
+                        ), None)
+                        lddt_core = lddt_core_match.split(":")[1].strip() if lddt_core_match else "-1"
+                    except Exception as foldmason_error:
+                        warning = (
+                            f"WARNING: foldmason LDDT unavailable for "
+                            f"{sample_name}, recording -1: "
+                            f"{type(foldmason_error).__name__}: {foldmason_error}"
+                        )
+                        print(warning)
+                        with open(log.stderr, "a") as err_file:
+                            print(warning, file=err_file)
                         lddt = "-1"
                         lddt_core = "-1"
+                # pylddt muscle LDDT and DALI Z score
+                pdbfiles_txt = params.workdir + "/pdbfiles.txt"
+                with open(pdbfiles_txt, "w") as pf:
+                    import glob
+                    for pdb_file in glob.glob(params.pdb + "/*"):
+                        pf.write(pdb_file + "\n")
+                try:
+                    lddt_muscle_output = shell(
+                        "python pylddt/src/lddt_mu_par.py"
+                        + " --msa {output.proj}"
+                        + " --pdbfiles " + pdbfiles_txt
+                        + " --threads {threads}"
+                        + " 2>> {log.stderr}",
+                        read=True
+                    )
+                    lddt_muscle = lddt_muscle_output.strip().split("\t")[1] if lddt_muscle_output.strip() else "-1"
+                    if params.lddt_muscle_only:
+                        dali_z = "-1"
                     else:
-                        # foldmason (msa2lddt in particular) can segfault on certain
-                        # inputs due to bugs in the upstream binary; don't let that
-                        # abort the whole run, just record -1 for this sample.
-                        # The reason always goes to the log: a systematic failure
-                        # here turns the whole lddt column into -1, which is easy
-                        # to mistake for "not requested" if nothing says otherwise.
-                        try:
-                            shell(
-                                "foldmason createdb {params.pdb} {params.workdir}foldmason_db"
-                                + " --threads {threads}"
-                                + " >> {log.stdout} 2>> {log.stderr}"
-                            )
-                            # Catch a name mismatch between the aligner and the
-                            # database before msa2lddt turns it into a bare
-                            # SIZE_MAX id (see lookup_coverage).
-                            n_missing, n_total, examples = lookup_coverage(
-                                params.workdir + "foldmason_db.lookup", output.proj
-                            )
-                            if n_missing:
-                                raise RuntimeError(
-                                    f"{n_missing}/{n_total} MSA headers absent from "
-                                    f"foldmason_db.lookup (e.g. {examples}) -- the "
-                                    "aligner and foldmason disagree on sequence names"
-                                )
-                            # Catch a residue-count mismatch before msa2lddt
-                            # turns it into an out-of-bounds read (see
-                            # chain_length_coverage).
-                            n_bad, n_rows, bad_examples = chain_length_coverage(
-                                params.workdir + "foldmason_db", output.proj
-                            )
-                            if n_bad:
-                                raise RuntimeError(
-                                    f"{n_bad}/{n_rows} MSA rows disagree with the "
-                                    f"foldmason database on residue count "
-                                    f"(e.g. {bad_examples}) -- msa2lddt would read "
-                                    "past the end of the C-alpha entries"
-                                )
-                            # Standard foldmason LDDT
-                            lddt_output = shell(
-                                "foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
-                                + " --threads {threads}"
-                                + " 2>> {log.stderr}",
-                                read=True
-                            )
-                            lddt_match = next((
-                                line for line in lddt_output.splitlines()
-                                if line.startswith("Average MSA LDDT:")
-                            ), None)
-                            lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
-                            # Foldmason LDDT core (conserved columns only)
-                            lddt_core_output = shell(
-                                "foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
-                                + " --pair-threshold 1.0 --only-scoring-cols true"
-                                + " --threads {threads}"
-                                + " 2>> {log.stderr}",
-                                read=True
-                            )
-                            lddt_core_match = next((
-                                line for line in lddt_core_output.splitlines()
-                                if line.startswith("Average MSA LDDT:")
-                            ), None)
-                            lddt_core = lddt_core_match.split(":")[1].strip() if lddt_core_match else "-1"
-                        except Exception as foldmason_error:
-                            warning = (
-                                f"WARNING: foldmason LDDT unavailable for "
-                                f"{sample_name}, recording -1: "
-                                f"{type(foldmason_error).__name__}: {foldmason_error}"
-                            )
-                            print(warning)
-                            with open(log.stderr, "a") as err_file:
-                                print(warning, file=err_file)
-                            lddt = "-1"
-                            lddt_core = "-1"
-                    # pylddt muscle LDDT and DALI Z score
-                    pdbfiles_txt = params.workdir + "/pdbfiles.txt"
-                    with open(pdbfiles_txt, "w") as pf:
-                        import glob
-                        for pdb_file in glob.glob(params.pdb + "/*"):
-                            pf.write(pdb_file + "\n")
-                    try:
-                        lddt_muscle_output = shell(
-                            "python pylddt/src/lddt_mu_par.py"
+                        dali_z_output = shell(
+                            "python pylddt/src/daliz_par.py"
                             + " --msa {output.proj}"
                             + " --pdbfiles " + pdbfiles_txt
                             + " --threads {threads}"
                             + " 2>> {log.stderr}",
                             read=True
                         )
-                        lddt_muscle = lddt_muscle_output.strip().split("\t")[1] if lddt_muscle_output.strip() else "-1"
-                        if params.lddt_muscle_only:
-                            dali_z = "-1"
-                        else:
-                            dali_z_output = shell(
-                                "python pylddt/src/daliz_par.py"
-                                + " --msa {output.proj}"
-                                + " --pdbfiles " + pdbfiles_txt
-                                + " --threads {threads}"
-                                + " 2>> {log.stderr}",
-                                read=True
-                            )
-                            dali_z_match = next((
-                                line for line in dali_z_output.splitlines()
-                                if "mean_DALI_Z" in line
-                            ), None)
-                            dali_z = dali_z_match.split("=")[-1].strip() if dali_z_match else "-1"
-                    except Exception:
-                        lddt_muscle = "-1"
-                        dali_z = "-1"
+                        dali_z_match = next((
+                            line for line in dali_z_output.splitlines()
+                            if "mean_DALI_Z" in line
+                        ), None)
+                        dali_z = dali_z_match.split("=")[-1].strip() if dali_z_match else "-1"
+                except Exception:
+                    lddt_muscle = "-1"
+                    dali_z = "-1"
 
-        else:
-            # If project_msa.py fails, create an empty output.proj
-            with open(output.proj, 'w') as f:
-                pass
-            success_flag = 0
-            values = ['0'] * 7
-            lddt = "0"
-            lddt_core = "0"
-            lddt_muscle = "0"
-            dali_z = "0"
+    else:
+        # If project_msa.py fails, create an empty output.proj
+        with open(output.proj, 'w') as f:
+            pass
+        success_flag = 0
+        values = ['0'] * 7
+        lddt = "0"
+        lddt_core = "0"
+        lddt_muscle = "0"
+        dali_z = "0"
 
-        with open(output.score, 'w') as f:
-            f.write(f"{sample_name} {success_flag} {' '.join(values)} {lddt} {lddt_core} {lddt_muscle} {dali_z}")
+    with open(output.score, 'w') as f:
+        f.write(f"{sample_name} {success_flag} {' '.join(values)} {lddt} {lddt_core} {lddt_muscle} {dali_z}")
+
+
+if not CLEANUP:
+    rule score_msa:
+        input:
+            est = "outputs/"+config["name"]+"/{tool}/alignments/{sample}",
+        output:
+            proj = "outputs/"+config["name"]+"/{tool}/projections/{sample}",
+            score = "outputs/"+config["name"]+"/{tool}/scores/{sample}.score"
+        threads: config["score_threads"] if "score_threads" in config else 8
+        resources:
+            mem_mb = config["score_mem"] if "score_mem" in config else 16000,
+            runtime = config["score_runtime"] if "score_runtime" in config else "10m",
+        log:
+            stdout="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.log",
+            stderr="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.err",
+        params:
+            workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
+            ref=resolve_ref_path,
+            pdb=resolve_pdb_path,
+            lddt_muscle_only=bool(config.get("lddt_muscle_only", False))
+        run:
+            score_sample(input, output, params, log, threads, wildcards)
 
 
 rule concat_scores:

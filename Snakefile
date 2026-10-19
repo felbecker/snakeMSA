@@ -3,6 +3,19 @@
 TOOLS = config["tools"]
 
 
+def config_flag(key, default=False):
+    """Boolean config value; strings from `--config key=false` are parsed."""
+    value = config.get(key, default)
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "yes", "1")
+    return bool(value)
+
+
+# Fuse alignment and scoring into one job per sample and delete the MSA,
+# projection and work dir once the scores are written (rules/align_and_score).
+CLEANUP = config_flag("cleanup")
+
+
 def data_file(*parts):
     """
     Resolves relative/absolute path. Relative paths do not start with `/`and
@@ -31,4 +44,5 @@ rule all:
 
 include: "rules/align"
 include: "rules/score_msa"
+include: "rules/align_and_score"
 include: "rules/evaluate"

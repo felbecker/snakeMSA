@@ -1,9 +1,22 @@
 import argparse
+import gzip
 
 import numpy as np
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+
+GZIP_MAGIC = b"\x1f\x8b"
+
+
+def open_msa(path):
+    """Open an MSA as text, decompressing it on the fly if it is gzipped
+    (e.g. learnMSA --compress). Detected by content, not by file name, as
+    the pipeline keeps the alignment's name without a ".gz" suffix.
+    """
+    with open(path, "rb") as f:
+        is_gzip = f.read(2) == GZIP_MAGIC
+    return gzip.open(path, "rt") if is_gzip else open(path)
 
 
 def main() -> None:
@@ -29,7 +42,7 @@ def main() -> None:
 
     # Step 2: Load matching MSA sequences
     ref_seqs = {}
-    with open(args.msa) as msa_file:
+    with open_msa(args.msa) as msa_file:
         for record in SeqIO.parse(msa_file, "fasta"):
             if record.id in ref_ids:
                 ref_seqs[record.id] = str(record.seq).upper()
