@@ -256,7 +256,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                         # Foldmason LDDT core (conserved columns only)
                         lddt_core_output = shell(
                             "foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
-                            + " --pair-threshold 1.0 --only-scoring-cols true"
+                            + " --pair-threshold 0.5 --only-scoring-cols true"
                             + " --threads {threads}"
                             + " 2>> {log.stderr}",
                             read=True
@@ -288,6 +288,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                         "python pylddt/src/lddt_mu_par.py"
                         + " --msa {output.proj}"
                         + " --pdbfiles " + pdbfiles_txt
+                        + " --symmetry both"
                         + " --threads {threads}"
                         + " 2>> {log.stderr}",
                         read=True
