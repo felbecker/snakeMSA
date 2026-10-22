@@ -12,7 +12,7 @@ Assuming that conda is already installed, run this once:
 
 `chmod +x ./install.sh ; ./install.sh`
 
-This creates a conda environment for each file in `envs/`. FAMSA and Kalign are outdated on bioconda, so the script downloads the FAMSA release binary from GitHub and builds Kalign from source (requires `cmake` and a C compiler). Both are placed in `bin/`.
+This creates a conda environment for each file in `envs/`. FAMSA and Kalign are outdated on bioconda, so the script downloads the FAMSA release binary from GitHub and builds Kalign from source (requires `cmake` and a C compiler). reseek 2.8, needed by MUSCLE's `-super7` 3D mode, is also built from source (requires `python3`, `make` and `g++`), as bioconda's 2.6.1 writes an empty distance matrix. All are placed in `bin/`.
 Pass names to install only some of them, e.g. `./install.sh famsa kalign clustalo`.
 `./check_version.sh` prints the installed version and location of each tool.
 

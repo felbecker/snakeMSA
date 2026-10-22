@@ -31,6 +31,8 @@ report famsa "$(bin_version famsa "'$bin_dir/famsa' 2>&1 | sed -n 's/^ *version 
     "bin/famsa (GitHub release)"
 report kalign "$(bin_version kalign "'$bin_dir/kalign' --version | sed 's/^kalign //'")" \
     "bin/kalign (built from source)"
+report reseek "$(bin_version reseek "'$bin_dir/reseek' -version | sed 's/^reseek v//; s/\\.i86.*//'")" \
+    "bin/reseek (built from source)"
 report clustalo "$(env_version clustalo "clustalo --version")" "conda env clustalo"
 report mafft "$(env_version mafft "mafft --version")" "conda env mafft"
 report muscle "$(env_version muscle "muscle -version | cut -d ' ' -f 2")" "conda env muscle"

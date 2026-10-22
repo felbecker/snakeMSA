@@ -5,17 +5,18 @@
 #
 # Usage: ./install.sh [name ...]
 # Without names, everything is installed. Otherwise only the given conda
-# environments and/or binaries (famsa, kalign).
+# environments and/or binaries (famsa, kalign, reseek).
 set -euo pipefail
 
 FAMSA_VERSION=2.5.2
 KALIGN_VERSION=3.6.0
+RESEEK_VERSION=2.8
 
 repo_dir=$(cd "$(dirname "$0")" && pwd)
 bin_dir="$repo_dir/bin"
 targets=("$@")
 
-known=(famsa kalign)
+known=(famsa kalign reseek)
 for file in "$repo_dir"/envs/*.yaml; do
     known+=("$(basename "$file" .yaml)")
 done
@@ -100,6 +101,47 @@ install_kalign() {
     rm -rf "$tmp"
 }
 
+# bioconda has reseek 2.6.1, whose -distmx writes no distances, so that
+# muscle -super7 fails (rcedgar/muscle#85). 2.8 is the newest version that
+# still has -pdb2mega and -distmx. The GitHub binaries need AVX-512, which
+# Zen 2 lacks, so build from source for any AVX2 machine (x86-64-v3) instead
+# of -march=native, which would tie the binary to the build host.
+install_reseek() {
+    selected reseek || return 0
+    if "$bin_dir/reseek" -version 2>&1 | grep -q "reseek v$RESEEK_VERSION\."; then
+        echo "reseek $RESEEK_VERSION already installed. Skipping."
+        return
+    fi
+    local tool
+    for tool in curl python3 make g++; do
+        command -v "$tool" > /dev/null || {
+            echo "Building reseek requires $tool. Exiting."
+            exit 1
+        }
+    done
+    local march=x86-64-v3
+    [ "$(uname -m)" = x86_64 ] || march=native
+    echo "Building reseek $RESEEK_VERSION ($march) to $bin_dir"
+    local tmp src
+    tmp=$(mktemp -d)
+    curl -fsSL "https://github.com/rcedgar/reseek/archive/refs/tags/v$RESEEK_VERSION.tar.gz" \
+        | tar -xz -C "$tmp"
+    src="$tmp/reseek-$RESEEK_VERSION/src"
+    # the build script generator, pinned by the release
+    curl -fsSL "https://raw.githubusercontent.com/rcedgar/vcxproj_make/$(cat "$src/vcxproj_make_commit.txt")/vcxproj_make.py" \
+        > "$tmp/vcxproj_make.py"
+    echo '"0"' > "$src/gitver.txt"
+    (cd "$src" \
+        && python3 "$tmp/vcxproj_make.py" --openmp --lrt --pthread --nomake \
+        && sed -i "s/-march=native/-march=$march/g" Makefile \
+        && make -j "$(nproc 2>/dev/null || echo 4)") > "$tmp/build.log" 2>&1 || {
+        echo "Failed to build reseek, see $tmp/build.log. Exiting."
+        exit 1
+    }
+    install -m 755 "$tmp/reseek-$RESEEK_VERSION/bin/reseek" "$bin_dir/reseek"
+    rm -rf "$tmp"
+}
+
 for file in "$repo_dir"/envs/*.yaml; do
     create_env "$file"
 done
@@ -107,3 +149,4 @@ done
 mkdir -p "$bin_dir"
 install_famsa
 install_kalign
+install_reseek
