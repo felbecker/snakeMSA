@@ -38,8 +38,10 @@ def align_sample(input, output, params, log, threads, wildcards):
     tool_command=config["tools"][wildcards.tool]["command"]
     argstring = parse_cmd_args(config["tools"][wildcards.tool]["params"])
 
-    # Make sure workdir exists before running the command
+    # Make sure workdir and the directory of the tree file exist before
+    # running the command
     os.makedirs(params.workdir, exist_ok=True)
+    os.makedirs(os.path.dirname(params.tree), exist_ok=True)
 
     cmd = (tool_command + " " + argstring).format(
         input=input.unaligned,
@@ -131,7 +133,7 @@ if not CLEANUP:
             "outputs/"+config["name"]+"/{tool}/benchmarks/{sample}.txt"
         params:
             workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
-            tree="outputs/"+config["name"]+"/{tool}/trees/{sample}/",
+            tree="outputs/"+config["name"]+"/{tool}/trees/{sample}.dnd",
             struct=resolve_struct_path,
             emb=resolve_emb_path,
             pdb=resolve_pdb_path,

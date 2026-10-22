@@ -41,5 +41,9 @@ configs/*
 !configs/learnMSA.json
 !configs/all_huge.json
 !configs/learnMSA_huge.json
+!configs/competition_pub_homfam.json
 profiles/
 slurm/
+
+# binaries installed by install.sh
+bin/

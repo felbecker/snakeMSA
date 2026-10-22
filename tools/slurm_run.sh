@@ -18,7 +18,7 @@
 # The #SBATCH defaults below can be overridden on the sbatch command line.
 # Environment variables (pass e.g. with sbatch --export=ALL,VAR=value):
 #   SNAKEMSA_DIR    snakeMSA checkout (default: $HOME/src/snakeMSA)
-#   SNAKEMAKE_ENV   conda env with snakemake (default: snakeMSA_base_env)
+#   SNAKEMAKE_ENV   conda env with snakemake (default: snakeMSA)
 #   CONDA_EXE       conda binary (default: $HOME/miniforge3/bin/conda)
 #
 #SBATCH --job-name=snakeMSA

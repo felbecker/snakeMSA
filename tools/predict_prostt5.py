@@ -10,7 +10,7 @@ output directories, e.g. to build data/homfam/prostt5_outputs:
 With several visible GPUs, one predict job per GPU runs in parallel (each job
 sees only its own GPU), so the output of the jobs may interleave.
 
-Run it in an environment with the learnMSA PyTorch extras (learnMSAtorch).
+Run it in an environment with the learnMSA PyTorch extras (learnMSA).
 Existing outputs are kept, so an interrupted run can simply be restarted.
 """
 

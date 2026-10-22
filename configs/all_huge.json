@@ -2,7 +2,7 @@
     "name": "all_huge",
     "tools": {
       "famsa" : {
-        "command": "conda run -n famsa_env famsa",
+        "command": "bin/famsa",
         "params": [
           "-t {threads}",
           "{input}",
@@ -10,7 +10,7 @@
         ]
       },
       "kalign" : {
-        "command": "conda run -n kalign_env kalign",
+        "command": "bin/kalign",
         "params": [
           "-n {threads}",
           "-i {input}",
@@ -18,7 +18,7 @@
         ]
       },
       "muscle" : {
-        "command": "conda run -n muscle_env muscle",
+        "command": "conda run -n muscle muscle",
         "params": [
           "-super5",
           "{input}",

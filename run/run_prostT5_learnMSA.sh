@@ -11,7 +11,7 @@
 #    arguments.
 #
 # Both steps use the learnMSA worktree ~/src/learnMSA-3di-uncertainty
-# (branch 3di_uncertainty) in the conda env learnMSAtorch.
+# (branch 3di_uncertainty) in the conda env learnMSA.
 set -euo pipefail
 
 input="$1"
@@ -30,11 +30,11 @@ else
     # Write under a temporary name first so that an interrupted run never
     # leaves a truncated npz behind for later runs to reuse.
     tmp="$workdir/$name.3di.tmp.npz"
-    PYTHONPATH="$learnmsa" conda run --live-stream -n learnMSAtorch \
+    PYTHONPATH="$learnmsa" conda run --live-stream -n learnMSA \
         python -m learnMSA.structure.predict_3di \
         -i "$input" -o "$tmp" --fasta "$workdir/$name.3di.fasta"
     mv "$tmp" "$npz"
 fi
 
-conda run --live-stream -n learnMSAtorch python "$learnmsa/learnMSA.py" \
+conda run --live-stream -n learnMSA python "$learnmsa/learnMSA.py" \
     -i "$input" -o "$output" --struct "$npz" --work_dir "$workdir" "$@"

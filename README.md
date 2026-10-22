@@ -12,6 +12,10 @@ Assuming that conda is already installed, run this once:
 
 `chmod +x ./install.sh ; ./install.sh`
 
+This creates a conda environment for each file in `envs/`. FAMSA and Kalign are outdated on bioconda, so the script downloads the FAMSA release binary from GitHub and builds Kalign from source (requires `cmake` and a C compiler). Both are placed in `bin/`.
+Pass names to install only some of them, e.g. `./install.sh famsa kalign clustalo`.
+`./check_version.sh` prints the installed version and location of each tool.
+
 
 ## Aquire the HomFam collection
 
@@ -36,11 +40,11 @@ The unaligned sequences will be aligned by the tools specified in the configurat
 
 To align HomFam with a variety of aligners run:
 
-`conda run -n snakeMSA_base_env snakemake --cores all --configfile configs/all.json`.
+`conda run -n snakeMSA snakemake --cores all --configfile configs/all.json`.
 
 To align HomFam with the 3 variants of learnMSA used in the learnMSA2 paper run:
 
-`conda run -n snakeMSA_base_env snakemake --cores all --configfile configs/learnMSA.json`.
+`conda run -n snakeMSA snakemake --cores all --configfile configs/learnMSA.json`.
 
 There are also `*_huge.json` variants available to run the large scale experiments.
 
@@ -62,7 +66,7 @@ slurm-logdir: slurm
 
 Run the pipeline via slurm:
 
-`conda run -n snakeMSA_base_env snakemake --profile <path-to-folder-containing-config.yaml> --configfile configs/learnMSA.json`.
+`conda run -n snakeMSA snakemake --profile <path-to-folder-containing-config.yaml> --configfile configs/learnMSA.json`.
 
 Please note: by default, learnMSA expects a GPU partition (and we recommend to use one!). For CPU change `use_gpu` field in `learnMSA.json` to False.
 
@@ -94,7 +98,7 @@ The script will randomly sample `n` series of nested datasets per dataset in the
 
 To generate data for the size scaling experiment from the learnMSA2 paper, run:
 
-`conda run -n learnMSA_env python tools/make_nested_sets.py --ref data/ext_homfam/ext_homfam_huge/aligned --data data/ext_homfam/ext_homfam_huge/unaligned --depths 1000 10000 50000 100000 250000 --n_series 4 --prefix data/size_scaling_homfam_huge`
+`conda run -n learnMSA python tools/make_nested_sets.py --ref data/ext_homfam/ext_homfam_huge/aligned --data data/ext_homfam/ext_homfam_huge/unaligned --depths 1000 10000 50000 100000 250000 --n_series 4 --prefix data/size_scaling_homfam_huge`
 
 Use the regular pipeline to align `data/size_scaling_homfam_huge`.
 
@@ -102,7 +106,7 @@ Then run the pipeline on the generated collection.
 
 Run 
 
-`conda run -n snakeMSA_base_env python tools/summarize_size_scaling.py -i <your results file1> <your results file2> (...)` 
+`conda run -n snakeMSA python tools/summarize_size_scaling.py -i <your results file1> <your results file2> (...)` 
 
 to summarize one or more size scaling result file(s).
 

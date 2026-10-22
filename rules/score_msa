@@ -212,7 +212,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                     # to mistake for "not requested" if nothing says otherwise.
                     try:
                         shell(
-                            "foldmason createdb {params.pdb} {params.workdir}foldmason_db"
+                            "conda run -n foldmason foldmason createdb {params.pdb} {params.workdir}foldmason_db"
                             + " --threads {threads}"
                             + " >> {log.stdout} 2>> {log.stderr}"
                         )
@@ -243,7 +243,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                             )
                         # Standard foldmason LDDT
                         lddt_output = shell(
-                            "foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
+                            "conda run -n foldmason foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
                             + " --threads {threads}"
                             + " 2>> {log.stderr}",
                             read=True
@@ -255,7 +255,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                         lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
                         # Foldmason LDDT core (conserved columns only)
                         lddt_core_output = shell(
-                            "foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
+                            "conda run -n foldmason foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
                             + " --pair-threshold 0.5 --only-scoring-cols true"
                             + " --threads {threads}"
                             + " 2>> {log.stderr}",

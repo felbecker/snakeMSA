@@ -2,7 +2,7 @@
     "name": "default",
     "tools": {
       "learnMSA" : {
-        "command": "conda run --live-stream -n learnMSA_env learnMSA",
+        "command": "conda run --live-stream -n learnMSA learnMSA",
         "params": [
           "-i {input}",
           "-o {output}",

@@ -125,7 +125,8 @@
           	"-o {output}",
             "--work_dir {workdir}",
 	    	    "--save_model",
-            "--struct {struct}"
+            "--struct {struct}",
+            "--struct_no_mask_ends"
         ]
       },
       "learnMSA_struct_replica_2" : {
@@ -135,7 +136,8 @@
           	"-o {output}",
             "--work_dir {workdir}",
 	    	    "--save_model",
-            "--struct {struct}"
+            "--struct {struct}",
+            "--struct_no_mask_ends"
         ]
       },
       "learnMSA_struct_replica_3" : {
@@ -145,7 +147,8 @@
           	"-o {output}",
             "--work_dir {workdir}",
 	    	    "--save_model",
-            "--struct {struct}"
+            "--struct {struct}",
+            "--struct_no_mask_ends"
         ]
       }
     },
