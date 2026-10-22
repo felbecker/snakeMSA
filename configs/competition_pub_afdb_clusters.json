@@ -28,7 +28,7 @@
     },
     "data_path": "data/afdb-clusters-test",
     "pdb": "pdb",
-    "use_gpu": 1,
+    "use_gpu": 0,
     "align_threads": 32,
     "score_threads": 32,
     "align_mem": 32000,
