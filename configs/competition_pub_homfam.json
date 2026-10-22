@@ -89,7 +89,8 @@
     "pdb": "pdb",
     "use_gpu": 0,
     "align_threads": 32,
-    "align_mem": 64000,
-    "align_runtime": "3d",
-    "score_mem": 64000
+    "score_threads": 4,
+    "align_mem": 32000,
+    "align_runtime": "24h",
+    "score_mem": 16000
 }
