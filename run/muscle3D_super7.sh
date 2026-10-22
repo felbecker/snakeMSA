@@ -6,4 +6,4 @@ conda run -n muscle_reseek28 reseek -convert "$pdb" -bca "$workdir/structs.bca" 
 conda run -n muscle_reseek28 reseek -pdb2mega "$workdir/structs.bca" -output "$workdir/structs.mega" && \
 conda run -n muscle_reseek28 reseek -distmx "$workdir/structs.bca" -output "$workdir/structs.distmx" && \
 conda run -n muscle muscle -super7 "$workdir/structs.mega" -distmxin "$workdir/structs.distmx" -reseek -output "$output" && \
-python3 tools/fix_chain_ids.py --msa "$output" --pdb "$pdb"
+python3 "$(dirname "$0")/../tools/fix_chain_ids.py" --msa "$output" --pdb "$pdb"

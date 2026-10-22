@@ -58,7 +58,17 @@ def load_and_process_data(input_file: str) -> pd.DataFrame:
     df['seq_count'] = parsed.apply(lambda x: x[1])
     df['run_num'] = parsed.apply(lambda x: x[2])
 
+    # -1 marks failed alignments
+    if 'tool_s' in df.columns:
+        df['tool_s'] = df['tool_s'].replace(-1, np.nan)
+
     return df
+
+
+def runtime_col(df: pd.DataFrame) -> str:
+    """The tool time without conda startup and file copies if the results
+    have it, otherwise the snakemake job time "s"."""
+    return 'tool_s' if 'tool_s' in df.columns else 's'
 
 
 def summarize_by_seq_count(df: pd.DataFrame) -> pd.DataFrame:
@@ -66,7 +76,7 @@ def summarize_by_seq_count(df: pd.DataFrame) -> pd.DataFrame:
     Compute means over families and runs for each sequence count.
     """
     # Columns to display in output
-    display_cols = ['SP-Score', 'Modeler', 'TC', 's']
+    display_cols = ['SP-Score', 'Modeler', 'TC', runtime_col(df)]
 
     # Filter to only existing columns
     cols_to_aggregate = [col for col in display_cols if col in df.columns]
@@ -97,6 +107,7 @@ def print_summary(
         print("\n" + "="*80)
         print(f"FILE: {filename}")
 
+    print(f"Runtime column: {runtime_col(df)}")
     print("="*80 + "\n")
 
     summary = summarize_by_seq_count(df)
@@ -108,7 +119,7 @@ def print_summary(
         print("="*80 + "\n")
 
         # Show breakdown by family and sequence count
-        display_cols = ['SP-Score', 'Modeler', 'TC', 's']
+        display_cols = ['SP-Score', 'Modeler', 'TC', runtime_col(df)]
         cols_to_show = [col for col in display_cols if col in df.columns]
 
         family_summary = df.groupby(['family', 'seq_count'])[cols_to_show].mean()

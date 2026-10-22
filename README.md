@@ -82,6 +82,13 @@ Each sample is then aligned and scored in a single job, after which its alignmen
 Scores, benchmarks and logs are kept, and the results files are identical to a run without cleanup (the benchmark still measures only the alignment step).
 The job requests the alignment threads and GPU, the larger of `align_mem` and `score_mem`, and `align_runtime` plus `score_runtime`.
 
+## Runtime measurement
+
+The results files contain two runtimes. `s` is the snakemake benchmark of the whole alignment job, and `tool_s` is the wall time of the aligner process alone (-1 if the alignment failed).
+For `tool_s`, the conda environment of a `conda run -n <env>` command is activated before timing starts, and the tool runs in a node-local scratch directory (`$TMPDIR`, or `"scratch_dir"` from the configuration file): its inputs are copied there first, and its outputs are copied back afterwards.
+On a slow shared filesystem, these steps can take longer than the alignment itself. Set `"scratch": false` to run tools on the original paths instead, e.g. if node-local storage is too small for the inputs.
+`tools/summarize.py` reports `tool_s` if all compared results have it, and `s` otherwise.
+
 ## Specific experiments
 
 ### Size scaling

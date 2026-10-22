@@ -60,6 +60,9 @@ if CLEANUP:
             lddt_muscle_only=bool(config.get("lddt_muscle_only", False)),
             gpu_bench=(
                 "outputs/"+config["name"]+"/{tool}/benchmarks/{sample}.gpu"
+            ),
+            tool_bench=(
+                "outputs/"+config["name"]+"/{tool}/benchmarks/{sample}.time"
             )
         run:
             from snakemake.benchmark import (

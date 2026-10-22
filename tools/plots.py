@@ -18,6 +18,7 @@ def barplot(
     title: Optional[str] = None,
     font_size: Optional[int] = None,
     tool_name_map: Optional[dict] = None,
+    time_col: str = "s",
 ) -> None:
     """Create a bar plot for a single run overlaying SP-Score (faded) and TC
     (solid) bars, with mean runtime as a label over each bar group.
@@ -41,6 +42,8 @@ def barplot(
         Base font size. Defaults to 10.
     tool_name_map:
         Mapping from dataframe tool names to display names shown on the plot.
+    time_col:
+        Runtime column for the labels, "s" or "tool_s".
     """
     sns.set_style("whitegrid")
 
@@ -62,7 +65,7 @@ def barplot(
         raise ValueError("No matching tools found in the dataframe.")
 
     data = df[df["tool"].isin(order)].copy()
-    means = data.groupby("tool")[["SP-Score", "TC", "s"]].mean()
+    means = data.groupby("tool")[["SP-Score", "TC", time_col]].mean()
 
     # Apply display-name mapping
     if tool_name_map:
@@ -106,7 +109,7 @@ def barplot(
     label_y = y_min + (y_mid - y_min) / 2
 
     for tool in display_order:
-        seconds = means.loc[tool, "s"]
+        seconds = means.loc[tool, time_col]
         hours = seconds / 3600
         if hours >= 1:
             label = f"{hours:.2f} h"
@@ -149,6 +152,7 @@ def barplot_lddt(
     title: Optional[str] = None,
     font_size: Optional[int] = None,
     tool_name_map: Optional[dict] = None,
+    time_col: str = "s",
 ) -> None:
     """Create a bar plot for a single run showing LDDT bars, with
     mean runtime as a label over each bar.
@@ -171,6 +175,8 @@ def barplot_lddt(
         Base font size. Defaults to 10.
     tool_name_map:
         Mapping from dataframe tool names to display names shown on the plot.
+    time_col:
+        Runtime column for the labels, "s" or "tool_s".
     """
     sns.set_style("whitegrid")
 
@@ -192,7 +198,7 @@ def barplot_lddt(
         raise ValueError("No matching tools found in the dataframe.")
 
     data = df[df["tool"].isin(order)].copy()
-    means = data.groupby("tool")[[lddt_col, "s"]].mean()
+    means = data.groupby("tool")[[lddt_col, time_col]].mean()
 
     # Apply display-name mapping
     if tool_name_map:
@@ -226,7 +232,7 @@ def barplot_lddt(
     label_y = y_min + (y_mid - y_min) / 2
 
     for tool in display_order:
-        seconds = means.loc[tool, "s"]
+        seconds = means.loc[tool, time_col]
         hours = seconds / 3600
         if hours >= 1:
             label = f"{hours:.2f} h"

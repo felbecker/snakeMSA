@@ -1,6 +1,7 @@
 # type: ignore
 
 GPU_MEM_COLUMN = "max_gpu_mem"
+TOOL_TIME_COLUMN = "tool_s"
 
 
 def lookup_coverage(lookup_path, msa_path):
@@ -96,24 +97,25 @@ def chain_length_coverage(db_prefix, msa_path):
     return len(mismatched), total, mismatched[:3]
 
 
-def merge_gpu_column(bench_path, column=GPU_MEM_COLUMN):
-    """Append the GPU memory sidecar value to a snakemake benchmark file.
+def merge_benchmark_column(bench_path, suffix, column):
+    """Append a sidecar value to a snakemake benchmark file as a new column.
 
-    The align rule cannot write this itself: snakemake overwrites the benchmark
-    file after the rule returns, so the value is parked in a sibling ".gpu" file
-    and folded in here. Benchmark files without a sidecar (e.g. from runs made
-    before GPU tracking existed) get -1. Idempotent, so re-running this rule
-    does not add the column twice.
+    The align rule cannot write these itself: snakemake overwrites the
+    benchmark file after the rule returns, so values like the peak GPU memory
+    (".gpu") and the time of the tool process alone (".time") are parked in a
+    sibling file and folded in here. Benchmark files without the sidecar
+    (e.g. from runs made before it existed) get -1. Idempotent, so re-running
+    this rule does not add the column twice.
     """
     with open(bench_path) as bench_file:
         lines = bench_file.read().splitlines()
     if not lines or column in lines[0].split("\t"):
         return
 
-    gpu_path = os.path.splitext(bench_path)[0] + ".gpu"
+    sidecar_path = os.path.splitext(bench_path)[0] + suffix
     try:
-        with open(gpu_path) as gpu_file:
-            value = gpu_file.read().strip() or "-1"
+        with open(sidecar_path) as sidecar_file:
+            value = sidecar_file.read().strip() or "-1"
     except FileNotFoundError:
         value = "-1"
 
@@ -371,9 +373,10 @@ rule concat_scores:
         mem_mb = 1000,
         runtime = "5m"
     run:
-        # fold the GPU memory sidecars into the benchmark files before reading
+        # fold the sidecars into the benchmark files before reading
         for b in input.benchmarks:
-            merge_gpu_column(b)
+            merge_benchmark_column(b, ".gpu", GPU_MEM_COLUMN)
+            merge_benchmark_column(b, ".time", TOOL_TIME_COLUMN)
 
         shell("echo -n 'sample success ' > {output}")
         # write the header

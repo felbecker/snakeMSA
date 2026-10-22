@@ -1,6 +1,10 @@
 # type: ignore
 import sys
 import glob
+import re
+import shutil
+import tempfile
+import time
 
 # Out-of-process GPU memory tracking, so that any GPU tool can be measured
 # without instrumenting it (see tools/gpu_monitor.py).
@@ -29,11 +33,72 @@ def resolve_emb_path(wildcards):
     )
 
 
+# "conda run [options] -n ENV " after optional "VAR=value " assignments
+CONDA_RUN = re.compile(
+    r"^((?:\S+=\S*\s+)*)conda\s+run(?:\s+--?[\w-]+)*?\s+(?:-n|--name)\s+(\S+)\s+"
+)
+
+
+def resolve_conda_run(cmd):
+    """Split off a leading `conda run -n ENV` from cmd.
+
+    Returns the command without it and the environment that `conda run`
+    would give it, so that conda starts before the tool is timed. Commands
+    without `conda run` keep the current environment.
+    """
+    match = CONDA_RUN.match(cmd)
+    if match is None:
+        return cmd, dict(os.environ)
+    env_name = match.group(2)
+    conda_exe = os.environ.get("CONDA_EXE", "conda")
+    result = subprocess.run(
+        [conda_exe, "run", "-n", env_name, "env", "-0"], capture_output=True
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"could not activate conda env {env_name}: "
+            + result.stderr.decode()
+        )
+    env = {}
+    for entry in result.stdout.decode().split("\0"):
+        key, sep, value = entry.strip("\n").partition("=")
+        if sep:
+            env[key] = value
+    return match.group(1) + cmd[match.end():], env
+
+
+def absolute_command_paths(command):
+    """Make the relative paths in a tool command (e.g. bin/famsa,
+    tools/mafft_3di.sh) absolute, so it can run in another directory."""
+    return " ".join(
+        os.path.abspath(token)
+        if "/" in token and not os.path.isabs(token) and os.path.exists(token)
+        else token
+        for token in command.split(" ")
+    )
+
+
+def copy_to(path, directory):
+    """Copy a file or directory into directory and return the new path."""
+    target = os.path.join(directory, os.path.basename(path.rstrip("/")))
+    if os.path.isdir(path):
+        shutil.copytree(path, target)
+    else:
+        shutil.copy(path, target)
+    return target
+
+
 def align_sample(input, output, params, log, threads, wildcards):
     """Run the configured tool on input.unaligned and write output.msa.
 
     Shared by the align rule and the fused align_and_score rule (cleanup
     mode). The arguments only need attribute access to the fields used here.
+
+    Only the tool process is timed (written to params.tool_bench). Starting
+    its conda env, and with the "scratch" config flag (default on) copying
+    the inputs to node-local scratch and the outputs back, happen outside of
+    that time: on a slow shared filesystem they can take longer than the
+    alignment itself.
     """
     tool_command=config["tools"][wildcards.tool]["command"]
     argstring = parse_cmd_args(config["tools"][wildcards.tool]["params"])
@@ -43,22 +108,10 @@ def align_sample(input, output, params, log, threads, wildcards):
     os.makedirs(params.workdir, exist_ok=True)
     os.makedirs(os.path.dirname(params.tree), exist_ok=True)
 
-    cmd = (tool_command + " " + argstring).format(
-        input=input.unaligned,
-        output=output.msa,
-        # a line starting with "workdir" outside of a rule would be parsed as
-        # the snakemake workdir directive
-        threads=threads, workdir=params.workdir,
-        tree=params.tree,
-        struct=params.struct,
-        emb=params.emb,
-        pdb=params.pdb,
-    )
-
-    print("Running command: ", cmd)
-
-    if "mafft" in wildcards.tool:
-        cmd += " > {output}".format(output=output.msa)
+    # -1 until the tool has run successfully
+    os.makedirs(os.path.dirname(params.tool_bench), exist_ok=True)
+    with open(params.tool_bench, "w") as time_file:
+        time_file.write("-1")
 
     # Tools that compress their output (learnMSA --compress) append ".gz" to
     # the output path. Remove a stale one so a failed run cannot pick it up.
@@ -66,35 +119,95 @@ def align_sample(input, output, params, log, threads, wildcards):
     if os.path.exists(compressed_msa):
         os.remove(compressed_msa)
 
-    p = subprocess.Popen(
-        cmd,
-        shell = True,
-        stdout = subprocess.PIPE,
-        stderr= subprocess.PIPE
+    paths = dict(
+        input=input.unaligned,
+        output=output.msa,
+        # a line starting with "workdir" outside of a rule would be parsed as
+        # the snakemake workdir directive
+        tree=params.tree, workdir=params.workdir,
+        struct=params.struct,
+        emb=params.emb,
+        pdb=params.pdb,
     )
-    # Track peak GPU memory of the command and all of its children for the
-    # duration of the run. Snakemake writes the benchmark file only after
-    # this rule returns, so the result goes to a sidecar that concat_scores
-    # merges into the benchmark file.
-    monitor = None
-    if config.get("use_gpu") and gpu_monitor.gpu_available():
-        monitor = gpu_monitor.GPUMemoryMonitor(p.pid).start()
+    scratch = None
+    if config_flag("scratch", True):
+        scratch = tempfile.mkdtemp(
+            prefix="snakeMSA_", dir=config.get("scratch_dir") or None
+        )
+        for key in ("input", "struct", "emb", "pdb"):
+            if paths[key] and os.path.exists(paths[key]):
+                os.makedirs(os.path.join(scratch, key))
+                paths[key] = copy_to(paths[key], os.path.join(scratch, key))
+            elif paths[key]:
+                paths[key] = os.path.abspath(paths[key])
+        for key in ("output", "tree"):
+            os.makedirs(os.path.join(scratch, key))
+            paths[key] = os.path.join(
+                scratch, key, os.path.basename(paths[key])
+            )
+        paths["workdir"] = os.path.join(scratch, "workdir") + "/"
+        os.makedirs(paths["workdir"])
+        tool_command = absolute_command_paths(tool_command)
+
+    cmd = (tool_command + " " + argstring).format(threads=threads, **paths)
+
+    print("Running command: ", cmd)
+
+    if "mafft" in wildcards.tool:
+        cmd += " > {output}".format(output=paths["output"])
 
     try:
-        stdout, stderr= p.communicate()
-    finally:
-        peak_gpu_mb = (
-            monitor.stop() if monitor is not None else gpu_monitor.NULL_GPU_MEM
+        cmd, env = resolve_conda_run(cmd)
+
+        start = time.monotonic()
+        p = subprocess.Popen(
+            cmd,
+            shell = True,
+            stdout = subprocess.PIPE,
+            stderr= subprocess.PIPE,
+            cwd = scratch,
+            env = env,
         )
-        os.makedirs(os.path.dirname(params.gpu_bench), exist_ok=True)
-        with open(params.gpu_bench, "w") as gpu_file:
-            gpu_file.write(str(peak_gpu_mb))
+        # Track peak GPU memory of the command and all of its children for
+        # the duration of the run. Snakemake writes the benchmark file only
+        # after this rule returns, so the result goes to a sidecar that
+        # concat_scores merges into the benchmark file.
+        monitor = None
+        if config.get("use_gpu") and gpu_monitor.gpu_available():
+            monitor = gpu_monitor.GPUMemoryMonitor(p.pid).start()
 
-    with open(log.stderr, "w") as err_file:
-        print(stderr.decode(), file=err_file)
+        try:
+            stdout, stderr= p.communicate()
+        finally:
+            tool_seconds = time.monotonic() - start
+            peak_gpu_mb = (
+                monitor.stop() if monitor is not None
+                else gpu_monitor.NULL_GPU_MEM
+            )
+            os.makedirs(os.path.dirname(params.gpu_bench), exist_ok=True)
+            with open(params.gpu_bench, "w") as gpu_file:
+                gpu_file.write(str(peak_gpu_mb))
 
-    with open(log.stdout, "w") as log_file:
-        print(stdout.decode(), file=log_file)
+        with open(log.stderr, "w") as err_file:
+            print(stderr.decode(), file=err_file)
+
+        with open(log.stdout, "w") as log_file:
+            print(stdout.decode(), file=log_file)
+    finally:
+        if scratch is not None:
+            # everything the tool wrote next to its output, e.g. output.gz
+            out_dir = os.path.join(scratch, "output")
+            for name in os.listdir(out_dir):
+                shutil.move(
+                    os.path.join(out_dir, name),
+                    os.path.join(os.path.dirname(output.msa), name),
+                )
+            if os.path.exists(paths["tree"]):
+                shutil.move(paths["tree"], params.tree)
+            shutil.copytree(
+                paths["workdir"], params.workdir, dirs_exist_ok=True
+            )
+            shutil.rmtree(scratch, ignore_errors=True)
 
     # Keep a compressed MSA gzipped under the expected name; scoring detects
     # the compression from the content (tools/project_msa.py).
@@ -111,6 +224,9 @@ def align_sample(input, output, params, log, threads, wildcards):
         # but make clear that the output file is invalid
         with open(output.msa, "w") as fout:
             fout.write("FAILED")
+    else:
+        with open(params.tool_bench, "w") as time_file:
+            time_file.write(f"{tool_seconds:.4f}")
 
 
 if not CLEANUP:
@@ -139,6 +255,9 @@ if not CLEANUP:
             pdb=resolve_pdb_path,
             gpu_bench=(
                 "outputs/"+config["name"]+"/{tool}/benchmarks/{sample}.gpu"
+            ),
+            tool_bench=(
+                "outputs/"+config["name"]+"/{tool}/benchmarks/{sample}.time"
             )
         run:
             align_sample(input, output, params, log, threads, wildcards)

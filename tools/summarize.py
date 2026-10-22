@@ -23,6 +23,11 @@ DEFAULT_STRUCT_SCORE_COLS = ["lddt_muscle"]
 #: monitored" (CPU-only tool, or a run made before GPU tracking existed).
 GPU_MEM_COL = "max_gpu_mem"
 
+#: Wall time in seconds of the tool process alone, recorded by the align rule
+#: without conda startup and file copies. "s" is the whole snakemake job.
+#: -1 means the alignment failed.
+TOOL_TIME_COL = "tool_s"
+
 
 argparser = argparse.ArgumentParser(
     description="Summarize the results of one or more runs."
@@ -161,6 +166,7 @@ def find_tools(run_names: List[str], intersection: bool) -> Set[str]:
 def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
     # Create an empty list to store the dataframes
     dfs = []
+    has_tool_time = True
 
     # Read each file and append its contents to the list
     for run_name in run_names:
@@ -180,6 +186,7 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
             )
             content = content.replace('\t', ' ')
             df = pd.read_csv(io.StringIO(content), index_col=False, sep=' ')
+            has_tool_time &= TOOL_TIME_COL in df.columns
             df["tool"] = tool
             df["run_name"] = run_name
             #df = df.set_index(df.dataset + "_" + df.family)
@@ -189,10 +196,11 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
     merged_df = pd.concat(dfs, ignore_index=True)
 
     # Treat -1 as "not available" so it is excluded from averages
-    for _col in STRUCT_SCORE_COLS + [GPU_MEM_COL]:
+    for _col in STRUCT_SCORE_COLS + [GPU_MEM_COL, TOOL_TIME_COL]:
         if _col in merged_df.columns:
             merged_df[_col] = merged_df[_col].replace(-1, np.nan)
 
+    merged_df.attrs[TOOL_TIME_COL] = has_tool_time
     return merged_df
 
 
@@ -288,6 +296,16 @@ def gpu_mem_cols(frame: pd.DataFrame) -> List[str]:
     return []
 
 
+def runtime_col(frame: pd.DataFrame) -> str:
+    """The runtime column to report for a frame from ``make_merged_df``.
+
+    The tool time if every results file has it, otherwise the snakemake job
+    time "s", so that results from before the tool time existed are not
+    compared with a different measurement.
+    """
+    return TOOL_TIME_COL if frame.attrs.get(TOOL_TIME_COL) else "s"
+
+
 if __name__ == '__main__':
     # Expand wildcard patterns in run names
     run_names = expand_run_patterns(args.i)
@@ -344,6 +362,8 @@ if __name__ == '__main__':
             common_tools = {tool1, tool2}
 
     df = make_merged_df(run_names, common_tools)
+    time_col = runtime_col(df)
+    print(f"Runtime column: {time_col}", file=sys.stderr)
 
     if args.show_failed or args.delete_failed or args.delete_failed_dry:
         failed_df = find_failed(df)
@@ -537,19 +557,19 @@ if __name__ == '__main__':
             print(df_sorted[
                 ["run_name", "tool", "sample",
                  "num_seq", "max_len", "avg_len", "pid",
-                 "SP-Score", "TC"] + _lddt_cols + ["s", "h:m:s", "success"]
+                 "SP-Score", "TC"] + _lddt_cols + [time_col, "h:m:s", "success"]
             ].to_string(index=False))
         else:
             _lddt_cols = struct_score_cols(df_sorted)
             _gpu_cols = gpu_mem_cols(df_sorted)
             print(df_sorted[
                 ["run_name", "tool", "sample", "SP-Score", "TC"] + _lddt_cols
-                + ["s", "h:m:s", "max_rss"] + _gpu_cols + ["success"]
+                + [time_col, "h:m:s", "max_rss"] + _gpu_cols + ["success"]
             ].to_string(index=False))
     else:
         with pd.option_context('display.max_columns', None, 'display.width', None):
             _lddt_cols = struct_score_cols(df)
-            _cols = ["SP-Score", "TC"] + _lddt_cols + ["s"] + gpu_mem_cols(df) + ["success"]
+            _cols = ["SP-Score", "TC"] + _lddt_cols + [time_col] + gpu_mem_cols(df) + ["success"]
             print(
                 df.groupby(
                     ["run_name", "tool"]
@@ -583,9 +603,11 @@ if __name__ == '__main__':
         plot_fontsize = args.barplot_fontsize
         if args.barplots:
             barplot(df, run_name=name, tools=tool_order, output_path=f"plots/{name}_barplot.pdf",
-                    title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map)
+                    title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map,
+                    time_col=time_col)
         if args.barplot_lddt:
             lddt_col = args.barplot_lddt
             barplot_lddt(df, run_name=name, tools=tool_order, lddt_col=lddt_col,
                          output_path=f"plots/{name}_barplot_{lddt_col}.pdf",
-                         title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map)
+                         title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map,
+                         time_col=time_col)
