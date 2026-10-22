@@ -1,0 +1,39 @@
+{
+    "name": "competition_pub_pdb_test",
+    "tools": {
+      "foldmason" : {
+        "command": "conda run -n foldmason bash run/foldmason.sh",
+        "params": [
+          "{pdb}",
+          "{output}",
+          "{workdir}"
+        ]
+      },
+    "muscle_3d" : {
+        "command": "conda run -n muscle bash run/muscle3D.sh",
+        "params": [
+          "{pdb}",
+          "{output}",
+          "{workdir}"
+        ]
+      },
+    "muscle_3d_super7" : {
+        "command": "conda run -n muscle bash run/muscle3D_super7.sh",
+        "params": [
+          "{pdb}",
+          "{output}",
+          "{workdir}"
+        ]
+      }
+    },
+    "data_path": "data/pdb_example_dataset",
+    "pdb": "pdb",
+    "use_gpu": 1,
+    "align_threads": 32,
+    "score_threads": 32,
+    "align_mem": 32000,
+    "align_runtime": "6h",
+    "score_runtime": "6h",
+    "score_mem": 32000,
+    "lddt_muscle_only": false
+}

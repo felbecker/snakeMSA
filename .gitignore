@@ -43,6 +43,8 @@ configs/*
 !configs/learnMSA_huge.json
 !configs/competition_pub_homfam.json
 !configs/competition_pub_test.json
+!configs/competition_pub_pdb_test.json
+!configs/competition_pub_afdb_clusters.json
 profiles/
 slurm/
 
