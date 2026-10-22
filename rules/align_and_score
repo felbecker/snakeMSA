@@ -111,4 +111,5 @@ if CLEANUP:
                 for path in (params.msa, params.proj):
                     if os.path.exists(path):
                         os.remove(path)
-                shutil.rmtree(params.workdir, ignore_errors=True)
+                if os.path.exists(params.workdir):
+                    remove_tree(params.workdir)

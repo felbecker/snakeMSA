@@ -3,6 +3,7 @@ import sys
 import glob
 import re
 import shutil
+import socket
 import tempfile
 import time
 
@@ -88,6 +89,69 @@ def copy_to(path, directory):
     return target
 
 
+def remove_tree(root):
+    """Delete root, including read-only parts (e.g. copied pdb dirs with
+    their source permissions) that a plain rmtree cannot remove."""
+    root = os.path.abspath(root)
+    def make_writable_and_retry(func, path, _):
+        path = os.path.abspath(path)
+        if path != root:
+            os.chmod(os.path.dirname(path), 0o700)
+        if os.path.isdir(path) and not os.path.islink(path):
+            os.chmod(path, 0o700)
+        func(path)
+    # onexc is new in Python 3.12; the snakemake env on the cluster has 3.11
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(root, onexc=make_writable_and_retry)
+    else:
+        shutil.rmtree(root, onerror=make_writable_and_retry)
+
+
+# Scratch dirs are named after host and pid of the job that owns them, so
+# that a later job can tell when they are orphaned.
+SCRATCH_HOST_PREFIX = f"snakeMSA_{socket.gethostname()}_"
+
+
+def remove_orphaned_scratch(scratch_dir):
+    """Delete scratch dirs of dead jobs on this host. A job that is killed
+    (SIGKILL, OOM, SIGTERM, which the run thread cannot handle) never reaches
+    its own cleanup."""
+    pattern = os.path.join(scratch_dir, SCRATCH_HOST_PREFIX + "*_*")
+    for path in glob.glob(pattern):
+        name = os.path.basename(path)
+        pid = name[len(SCRATCH_HOST_PREFIX):].split("_")[0]
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            try:
+                remove_tree(path)
+            except OSError as error:
+                # e.g. the dir of another user on a shared node
+                print(f"Could not remove orphaned scratch {path}: {error}")
+        except (ValueError, PermissionError):
+            pass  # not a pid or the process is alive
+
+
+def copy_back_from_scratch(scratch, paths, output, params):
+    """Move the outputs of a tool that ran in scratch to their real paths."""
+    # everything the tool wrote next to its output, e.g. output.gz
+    out_dir = os.path.join(scratch, "output")
+    for name in os.listdir(out_dir):
+        shutil.move(
+            os.path.join(out_dir, name),
+            os.path.join(os.path.dirname(output.msa), name),
+        )
+    if os.path.exists(paths["tree"]):
+        shutil.move(paths["tree"], params.tree)
+    # keep symlinks as they are: tools leave dangling ones in their workdir
+    # (e.g. the mmseqs tmp dir of learnMSA). Replace the workdir of a
+    # previous run, whose links would collide.
+    remove_tree(params.workdir)
+    shutil.copytree(
+        paths["workdir"], params.workdir, symlinks=True, dirs_exist_ok=True
+    )
+
+
 def align_sample(input, output, params, log, threads, wildcards):
     """Run the configured tool on input.unaligned and write output.msa.
 
@@ -130,33 +194,42 @@ def align_sample(input, output, params, log, threads, wildcards):
         pdb=params.pdb,
     )
     scratch = None
-    if config_flag("scratch", True):
-        scratch = tempfile.mkdtemp(
-            prefix="snakeMSA_", dir=config.get("scratch_dir") or None
-        )
-        for key in ("input", "struct", "emb", "pdb"):
-            if paths[key] and os.path.exists(paths[key]):
-                os.makedirs(os.path.join(scratch, key))
-                paths[key] = copy_to(paths[key], os.path.join(scratch, key))
-            elif paths[key]:
-                paths[key] = os.path.abspath(paths[key])
-        for key in ("output", "tree"):
-            os.makedirs(os.path.join(scratch, key))
-            paths[key] = os.path.join(
-                scratch, key, os.path.basename(paths[key])
-            )
-        paths["workdir"] = os.path.join(scratch, "workdir") + "/"
-        os.makedirs(paths["workdir"])
-        tool_command = absolute_command_paths(tool_command)
-
-    cmd = (tool_command + " " + argstring).format(threads=threads, **paths)
-
-    print("Running command: ", cmd)
-
-    if "mafft" in wildcards.tool:
-        cmd += " > {output}".format(output=paths["output"])
-
+    # copy back only what a started tool wrote, not a half set up scratch
+    tool_started = False
     try:
+        if config_flag("scratch", True):
+            scratch_dir = config.get("scratch_dir") or tempfile.gettempdir()
+            remove_orphaned_scratch(scratch_dir)
+            scratch = tempfile.mkdtemp(
+                prefix=f"{SCRATCH_HOST_PREFIX}{os.getpid()}_",
+                dir=scratch_dir,
+            )
+            for key in ("input", "struct", "emb", "pdb"):
+                if paths[key] and os.path.exists(paths[key]):
+                    os.makedirs(os.path.join(scratch, key))
+                    paths[key] = copy_to(
+                        paths[key], os.path.join(scratch, key)
+                    )
+                elif paths[key]:
+                    paths[key] = os.path.abspath(paths[key])
+            for key in ("output", "tree"):
+                os.makedirs(os.path.join(scratch, key))
+                paths[key] = os.path.join(
+                    scratch, key, os.path.basename(paths[key])
+                )
+            paths["workdir"] = os.path.join(scratch, "workdir") + "/"
+            os.makedirs(paths["workdir"])
+            tool_command = absolute_command_paths(tool_command)
+
+        cmd = (tool_command + " " + argstring).format(
+            threads=threads, **paths
+        )
+
+        print("Running command: ", cmd)
+
+        if "mafft" in wildcards.tool:
+            cmd += " > {output}".format(output=paths["output"])
+
         cmd, env = resolve_conda_run(cmd)
 
         start = time.monotonic()
@@ -168,6 +241,7 @@ def align_sample(input, output, params, log, threads, wildcards):
             cwd = scratch,
             env = env,
         )
+        tool_started = True
         # Track peak GPU memory of the command and all of its children for
         # the duration of the run. Snakemake writes the benchmark file only
         # after this rule returns, so the result goes to a sidecar that
@@ -195,19 +269,11 @@ def align_sample(input, output, params, log, threads, wildcards):
             print(stdout.decode(), file=log_file)
     finally:
         if scratch is not None:
-            # everything the tool wrote next to its output, e.g. output.gz
-            out_dir = os.path.join(scratch, "output")
-            for name in os.listdir(out_dir):
-                shutil.move(
-                    os.path.join(out_dir, name),
-                    os.path.join(os.path.dirname(output.msa), name),
-                )
-            if os.path.exists(paths["tree"]):
-                shutil.move(paths["tree"], params.tree)
-            shutil.copytree(
-                paths["workdir"], params.workdir, dirs_exist_ok=True
-            )
-            shutil.rmtree(scratch, ignore_errors=True)
+            try:
+                if tool_started:
+                    copy_back_from_scratch(scratch, paths, output, params)
+            finally:
+                remove_tree(scratch)
 
     # Keep a compressed MSA gzipped under the expected name; scoring detects
     # the compression from the content (tools/project_msa.py).
