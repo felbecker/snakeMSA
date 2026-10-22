@@ -32,7 +32,7 @@
     "align_threads": 32,
     "score_threads": 32,
     "align_mem": 32000,
-    "align_runtime": "6h",
+    "align_runtime": "12h",
     "score_runtime": "6h",
     "score_mem": 32000,
     "lddt_muscle_only": false
