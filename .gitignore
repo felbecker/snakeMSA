@@ -16,6 +16,7 @@ data/*
 !data/balifam/
 !data/ext_homfam/
 !data/example_dataset/
+!data/pdb_example_dataset/
 !data/homstradfam/
 # Ignore everything else inside these subfolders
 data/homstrad/*
