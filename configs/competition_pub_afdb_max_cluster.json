@@ -1,0 +1,32 @@
+{
+    "name": "competition_pub_afdb_max_cluster",
+    "tools": {
+      "foldmason" : {
+        "command": "conda run -n foldmason bash run/foldmason.sh",
+        "params": [
+          "{pdb}",
+          "{output}",
+          "{workdir}"
+        ]
+      },
+    "muscle_3d_super7" : {
+        "command": "conda run -n muscle bash run/muscle3D_super7.sh",
+        "params": [
+          "{pdb}",
+          "{output}",
+          "{workdir}"
+        ]
+      }
+    },
+    "data_path": "data/afdb_max_cluster",
+    "pdb": "pdb",
+    "ref_pdb": "ref_pdb",
+    "use_gpu": 0,
+    "align_threads": 32,
+    "score_threads": 32,
+    "align_mem": 64000,
+    "align_runtime": "3d",
+    "score_runtime": "12h",
+    "score_mem": 64000,
+    "lddt_muscle_only": false
+}

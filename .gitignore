@@ -46,6 +46,7 @@ configs/*
 !configs/competition_pub_test.json
 !configs/competition_pub_pdb_test.json
 !configs/competition_pub_afdb_clusters.json
+!configs/competition_pub_afdb_max_cluster.json
 profiles/
 slurm/
 
