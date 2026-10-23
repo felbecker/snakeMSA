@@ -63,7 +63,8 @@
                 "--thread {threads}",
                 "--anysymbol",
                 "--quiet",
-                "{struct}"
+                "{struct}",
+                "{input}"
             ]
         },
         "mafft_dpparttree_3Di": {
@@ -73,7 +74,8 @@
                 "--anysymbol",
                 "--quiet",
                 "--dpparttree",
-                "{struct}"
+                "{struct}",
+                "{input}"
             ]
         },
         "muscle_super5": {
