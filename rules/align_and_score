@@ -56,6 +56,7 @@ if CLEANUP:
             struct=resolve_struct_path,
             emb=resolve_emb_path,
             pdb=resolve_pdb_path,
+            ref_pdb=resolve_ref_pdb_path,
             ref=resolve_ref_path,
             lddt_muscle_only=bool(config.get("lddt_muscle_only", False)),
             gpu_bench=(

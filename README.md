@@ -35,6 +35,12 @@ Both directories should contain fasta files with matching filenames (and extensi
 The aligned sequences can be a subset of the unaligned sequences, but the sequence identifiers must match. 
 The unaligned sequences will be aligned by the tools specified in the configuration file and the aligned sequences will be used as references to score the outputs.
 
+For structure-based scores (LDDT, DALI Z), set `pdb` to a folder in `data_path` with one subfolder of PDB files per sample.
+Scoring compares all pairs of structures, which takes days on very large samples.
+To score against a subset only, set `ref_pdb` to a second folder of the same layout that holds a subset of the structures.
+The aligners still get all structures in `pdb`. The structure scores are computed on the sub-alignment of the rows with a structure in `ref_pdb`, matched by file name, with all-gap columns removed.
+For example, `data/afdb_max_cluster` uses as `ref_pdb` the diverse, downsampled version of the same cluster from `afdb-clusters`.
+
 
 ## Run locally
 

@@ -97,6 +97,44 @@ def chain_length_coverage(db_prefix, msa_path):
     return len(mismatched), total, mismatched[:3]
 
 
+def restrict_msa_to_structures(msa_path, struct_dir, dst_path):
+    """Write the sub-alignment of the rows that have a structure in struct_dir.
+
+    Used with "ref_pdb": the structure scores are then computed on a subset
+    of the structures that were aligned, as if the aligner had produced just
+    these rows. Rows are matched by name to the structure file stems, the way
+    foldmason's lookup does. Columns that are gaps in every kept row are
+    dropped; "." counts as a residue here, as it does in foldmason.
+
+    Returns (n_missing, n_structures, first few structures without a row).
+    """
+    names = {os.path.splitext(f)[0] for f in os.listdir(struct_dir)}
+    records = []
+    keep = False
+    with open(msa_path) as msa_file:
+        for line in msa_file:
+            if line.startswith(">"):
+                header = line[1:].split()
+                keep = bool(header) and header[0] in names
+                if keep:
+                    records.append([line, header[0], []])
+            elif keep:
+                records[-1][2].append(line.strip())
+
+    rows = ["".join(parts) for _, _, parts in records]
+    cols = [
+        i for i, column in enumerate(zip(*rows))
+        if any(c != "-" for c in column)
+    ]
+    with open(dst_path, "w") as dst_file:
+        for (header_line, _, _), row in zip(records, rows):
+            dst_file.write(header_line)
+            dst_file.write("".join(row[i] for i in cols) + "\n")
+
+    missing = sorted(names - {name for _, name, _ in records})
+    return len(missing), len(names), missing[:3]
+
+
 def merge_benchmark_column(bench_path, suffix, column):
     """Append a sidecar value to a snakemake benchmark file as a new column.
 
@@ -133,6 +171,18 @@ def merge_benchmark_column(bench_path, suffix, column):
 def resolve_ref_path(wildcards):
     ref_path = data_file("aligned", wildcards.sample)
     return ref_path if os.path.exists(ref_path) else ""
+
+
+def resolve_ref_pdb_path(wildcards):
+    """Structures to score against, if they are not all of "pdb".
+
+    With "ref_pdb", <data_path>/<ref_pdb>/<sample> holds a subset of the
+    structures in "pdb" (e.g. a diverse sample of a huge cluster, where
+    scoring every pair would take days). The aligners still get all of "pdb".
+    """
+    if "ref_pdb" not in config:
+        return ""
+    return data_file(config["ref_pdb"], os.path.splitext(wildcards.sample)[0])
 
 
 def score_sample(input, output, params, log, threads, wildcards):
@@ -186,14 +236,35 @@ def score_sample(input, output, params, log, threads, wildcards):
                 line.split()[1] for line in fastsp_output.strip().split('\n')
             ]
 
-        # compute lddt scores using foldmason and pylddt
-        if params.pdb == "":
+        # compute lddt scores using foldmason and pylddt, against all
+        # structures or, with ref_pdb, against the reference subset only
+        struct_dir = params.ref_pdb or params.pdb
+        struct_msa = output.proj
+        if params.ref_pdb and os.path.exists(struct_dir):
+            os.makedirs(params.workdir, exist_ok=True)
+            struct_msa = params.workdir + "ref_pdb_msa.fa"
+            n_missing, n_ref, examples = restrict_msa_to_structures(
+                output.proj, struct_dir, struct_msa
+            )
+            if n_missing:
+                # pylddt only rejects rows without a structure, so a missing
+                # reference structure would silently shrink the subset
+                warning = (
+                    f"WARNING: structure scores unavailable for "
+                    f"{sample_name}, recording -1: {n_missing}/{n_ref} "
+                    f"ref_pdb structures have no MSA row (e.g. {examples})"
+                )
+                print(warning)
+                with open(log.stderr, "a") as err_file:
+                    print(warning, file=err_file)
+                struct_dir = ""
+        if struct_dir == "":
             lddt = "-1"
             lddt_core = "-1"
             lddt_muscle = "-1"
             dali_z = "-1"
         else:
-            if not os.path.exists(params.pdb):
+            if not os.path.exists(struct_dir):
                 lddt = "-1"
                 lddt_core = "-1"
                 lddt_muscle = "-1"
@@ -214,7 +285,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                     # to mistake for "not requested" if nothing says otherwise.
                     try:
                         shell(
-                            "conda run -n foldmason foldmason createdb {params.pdb} {params.workdir}foldmason_db"
+                            "conda run -n foldmason foldmason createdb {struct_dir} {params.workdir}foldmason_db"
                             + " --threads {threads}"
                             + " >> {log.stdout} 2>> {log.stderr}"
                         )
@@ -222,7 +293,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                         # database before msa2lddt turns it into a bare
                         # SIZE_MAX id (see lookup_coverage).
                         n_missing, n_total, examples = lookup_coverage(
-                            params.workdir + "foldmason_db.lookup", output.proj
+                            params.workdir + "foldmason_db.lookup", struct_msa
                         )
                         if n_missing:
                             raise RuntimeError(
@@ -234,7 +305,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                         # turns it into an out-of-bounds read (see
                         # chain_length_coverage).
                         n_bad, n_rows, bad_examples = chain_length_coverage(
-                            params.workdir + "foldmason_db", output.proj
+                            params.workdir + "foldmason_db", struct_msa
                         )
                         if n_bad:
                             raise RuntimeError(
@@ -245,7 +316,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                             )
                         # Standard foldmason LDDT
                         lddt_output = shell(
-                            "conda run -n foldmason foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
+                            "conda run -n foldmason foldmason msa2lddt {params.workdir}foldmason_db {struct_msa}"
                             + " --threads {threads}"
                             + " 2>> {log.stderr}",
                             read=True
@@ -257,7 +328,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                         lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
                         # Foldmason LDDT core (conserved columns only)
                         lddt_core_output = shell(
-                            "conda run -n foldmason foldmason msa2lddt {params.workdir}foldmason_db {output.proj}"
+                            "conda run -n foldmason foldmason msa2lddt {params.workdir}foldmason_db {struct_msa}"
                             + " --pair-threshold 0.5 --only-scoring-cols true"
                             + " --threads {threads}"
                             + " 2>> {log.stderr}",
@@ -283,12 +354,12 @@ def score_sample(input, output, params, log, threads, wildcards):
                 pdbfiles_txt = params.workdir + "/pdbfiles.txt"
                 with open(pdbfiles_txt, "w") as pf:
                     import glob
-                    for pdb_file in glob.glob(params.pdb + "/*"):
+                    for pdb_file in glob.glob(struct_dir + "/*"):
                         pf.write(pdb_file + "\n")
                 try:
                     lddt_muscle_output = shell(
                         "python pylddt/src/lddt_mu_par.py"
-                        + " --msa {output.proj}"
+                        + " --msa {struct_msa}"
                         + " --pdbfiles " + pdbfiles_txt
                         + " --symmetry both"
                         + " --threads {threads}"
@@ -301,7 +372,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                     else:
                         dali_z_output = shell(
                             "python pylddt/src/daliz_par.py"
-                            + " --msa {output.proj}"
+                            + " --msa {struct_msa}"
                             + " --pdbfiles " + pdbfiles_txt
                             + " --threads {threads}"
                             + " 2>> {log.stderr}",
@@ -349,6 +420,7 @@ if not CLEANUP:
             workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
             ref=resolve_ref_path,
             pdb=resolve_pdb_path,
+            ref_pdb=resolve_ref_pdb_path,
             lddt_muscle_only=bool(config.get("lddt_muscle_only", False))
         run:
             score_sample(input, output, params, log, threads, wildcards)
