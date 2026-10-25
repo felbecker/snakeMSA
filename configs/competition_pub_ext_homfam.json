@@ -1,0 +1,99 @@
+{
+    "name": "competition_pub_ext_homfam",
+    "tools": {
+        "famsa": {
+            "command": "bin/famsa",
+            "params": [
+                "-t {threads}",
+                "{input}",
+                "{output}"
+            ]
+        },
+        "kalign": {
+            "command": "bin/kalign",
+            "params": [
+                "-n {threads}",
+                "-i {input}",
+                "-o {output}"
+            ]
+        },
+        "clustalo": {
+            "command": "conda run -n clustalo clustalo",
+            "params": [
+                "--threads={threads}",
+                "-i {input}",
+                "-o {output}"
+            ]
+        },
+        "t-coffee": {
+            "command": "OMP_NUM_THREADS={threads} conda run -n t-coffee t_coffee",
+            "params": [
+                "-reg",
+                "-thread {threads}",
+                "-nseq 100",
+                "-tree mbed",
+                "-method clustalo_msa",
+                "-seq {input}",
+                "-outfile {output}",
+                "-outtree {tree}"
+            ]
+        },
+        "mafft": {
+            "command": "conda run -n mafft mafft",
+            "params": [
+                "--thread {threads}",
+                "--anysymbol",
+                "--quiet",
+                "{input}"
+            ]
+        },
+        "mafft_dpparttree": {
+            "command": "conda run -n mafft mafft",
+            "params": [
+                "--thread {threads}",
+                "--anysymbol",
+                "--quiet",
+                "--dpparttree",
+                "{input}"
+            ]
+        },
+        "mafft_3Di": {
+            "command": "conda run -n mafft bash tools/mafft_3di.sh",
+            "params": [
+                "--thread {threads}",
+                "--anysymbol",
+                "--quiet",
+                "{struct}",
+                "{input}"
+            ]
+        },
+        "mafft_dpparttree_3Di": {
+            "command": "conda run -n mafft bash tools/mafft_3di.sh",
+            "params": [
+                "--thread {threads}",
+                "--anysymbol",
+                "--quiet",
+                "--dpparttree",
+                "{struct}",
+                "{input}"
+            ]
+        },
+        "muscle_super5": {
+            "command": "conda run -n muscle muscle",
+            "params": [
+                "-super5 {input}",
+                "-output {output}"
+            ]
+        }
+    },
+    "data_path": "data/ext_homfam",
+    "struct_data": "predicted_3di",
+    "pdb": "pdb",
+    "use_gpu": 0,
+    "align_threads": 32,
+    "score_threads": 8,
+    "align_mem": 256000,
+    "align_runtime": "3d",
+    "score_mem": 64000,
+    "cleanup": true
+}
