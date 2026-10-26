@@ -38,10 +38,10 @@ data/homstradfam/*
 !data/homstradfam/make_homstradfam.py
 configs/*
 !configs/default.json
-!configs/all.json
-!configs/learnMSA.json
-!configs/all_huge.json
-!configs/learnMSA_huge.json
+!configs/learnMSA_pub_afdb_clusters.json
+!configs/learnMSA_pub_afdb_max_cluster.json
+!configs/learnMSA_pub_ext_homfam.json
+!configs/learnMSA_pub_homfamjson
 !configs/competition_pub_homfam.json
 !configs/competition_pub_test.json
 !configs/competition_pub_pdb_test.json

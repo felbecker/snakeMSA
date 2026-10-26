@@ -1,0 +1,4 @@
+learnMSA_struct learnMSA\n(Foldseek 3Di)
+foldmason FoldMason
+muscle_3d Muscle3D
+muscle_3d_super7 Muscle3D\n(Super7)

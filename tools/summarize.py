@@ -28,6 +28,10 @@ GPU_MEM_COL = "max_gpu_mem"
 #: -1 means the alignment failed.
 TOOL_TIME_COL = "tool_s"
 
+#: Runtime reported by this script, set per results file: TOOL_TIME_COL if
+#: the file has it, otherwise "s" (local runs from before tool_s existed).
+RUNTIME_COL = "runtime"
+
 
 argparser = argparse.ArgumentParser(
     description="Summarize the results of one or more runs."
@@ -88,9 +92,12 @@ argparser.add_argument(
     help="Create a bar plot (SP-Score, TC, runtime) for each run."
 )
 argparser.add_argument(
-    '--barplot_lddt', nargs='?', const='lddt', default=None, metavar='LDDT_TYPE',
-    help="Create a bar plot for LDDT. Optionally specify the variant to plot: "
-         "lddt (default), lddt_core, lddt_muscle, or dali_z."
+    '--barplot_lddt', nargs='*', default=None, metavar='LDDT_TYPE',
+    help="Create a bar plot for structural scores. Optionally specify one or "
+         "two scores (lddt, lddt_core, lddt_muscle, dali_z); default: "
+         "lddt_muscle lddt. With two scores, the first is drawn as faded bars "
+         "and the second as solid bars on top, so the first should be the "
+         "larger one."
 )
 argparser.add_argument(
     '--average-replicas', action='store_true', dest='average_replicas',
@@ -108,7 +115,16 @@ argparser.add_argument(
 argparser.add_argument(
     '--barplot_tool_names', type=str, default=None, metavar='FILE',
     help="Tab-separated file mapping tool names: one row per tool with columns "
-         "'name_in_dataframe<TAB>name_in_plot'. Whitespace is allowed in name_in_plot."
+         "'name_in_dataframe<TAB>name_in_plot'. Whitespace is allowed in name_in_plot; "
+         "a literal '\\n' in name_in_plot starts a new line."
+)
+argparser.add_argument(
+    '--barplot_output', type=str, default=None, metavar='PATH',
+    help="Where to save bar plots. A path with an extension (e.g. "
+         "figs/my_plot.pdf) is used as the file name; anything else is "
+         "treated as a directory that receives the default file names. "
+         "If both --barplots and --barplot_lddt are given, the LDDT plot "
+         "gets '_<lddt_type>' appended to the file name. Default: plots/."
 )
 
 args = argparser.parse_args()
@@ -166,7 +182,6 @@ def find_tools(run_names: List[str], intersection: bool) -> Set[str]:
 def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
     # Create an empty list to store the dataframes
     dfs = []
-    has_tool_time = True
 
     # Read each file and append its contents to the list
     for run_name in run_names:
@@ -186,7 +201,15 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
             )
             content = content.replace('\t', ' ')
             df = pd.read_csv(io.StringIO(content), index_col=False, sep=' ')
-            has_tool_time &= TOOL_TIME_COL in df.columns
+            if TOOL_TIME_COL in df.columns:
+                df[RUNTIME_COL] = df[TOOL_TIME_COL].replace(-1, np.nan)
+            else:
+                print(
+                    f"Warning: {filename} has no {TOOL_TIME_COL} column, "
+                    "using the snakemake job time \"s\" as runtime.",
+                    file=sys.stderr,
+                )
+                df[RUNTIME_COL] = df["s"]
             df["tool"] = tool
             df["run_name"] = run_name
             #df = df.set_index(df.dataset + "_" + df.family)
@@ -200,7 +223,6 @@ def make_merged_df(run_names: List[str], tools: Set[str]) -> pd.DataFrame:
         if _col in merged_df.columns:
             merged_df[_col] = merged_df[_col].replace(-1, np.nan)
 
-    merged_df.attrs[TOOL_TIME_COL] = has_tool_time
     return merged_df
 
 
@@ -285,6 +307,19 @@ def struct_diff_cols(frame: pd.DataFrame, suffix1: str, suffix2: str) -> List[st
     ]
 
 
+def tool_name(tool: str) -> str:
+    """The name a tool is reported under: without its '_replica_N' suffix
+    if --average-replicas is given."""
+    if args.average_replicas:
+        return re.sub(r'_replica_\d+$', '', tool)
+    return tool
+
+
+def tools_named(tools: Set[str], names: Set[str]) -> Set[str]:
+    """The tools in ``tools`` reported under one of ``names``."""
+    return {t for t in tools if tool_name(t) in names}
+
+
 def gpu_mem_cols(frame: pd.DataFrame) -> List[str]:
     """The peak GPU memory column, if any of the runs actually recorded it.
 
@@ -294,16 +329,6 @@ def gpu_mem_cols(frame: pd.DataFrame) -> List[str]:
     if GPU_MEM_COL in frame.columns and frame[GPU_MEM_COL].notna().any():
         return [GPU_MEM_COL]
     return []
-
-
-def runtime_col(frame: pd.DataFrame) -> str:
-    """The runtime column to report for a frame from ``make_merged_df``.
-
-    The tool time if every results file has it, otherwise the snakemake job
-    time "s", so that results from before the tool time existed are not
-    compared with a different measurement.
-    """
-    return TOOL_TIME_COL if frame.attrs.get(TOOL_TIME_COL) else "s"
 
 
 if __name__ == '__main__':
@@ -331,39 +356,43 @@ if __name__ == '__main__':
         tool1, tool2 = args.compare_tools
         run1_tools = find_tools([run_names[0]], intersection=True)
         run2_tools = find_tools([run_names[1]], intersection=True)
-        if tool1 not in run1_tools:
+        run1_matches = tools_named(run1_tools, {tool1})
+        run2_matches = tools_named(run2_tools, {tool2})
+        if not run1_matches:
             raise ValueError(
                 f"Tool '{tool1}' not found in run '{run_names[0]}'. "
-                f"Available: {', '.join(sorted(run1_tools))}"
+                f"Available: {', '.join(sorted(map(tool_name, run1_tools)))}"
             )
-        if tool2 not in run2_tools:
+        if not run2_matches:
             raise ValueError(
                 f"Tool '{tool2}' not found in run '{run_names[1]}'. "
-                f"Available: {', '.join(sorted(run2_tools))}"
+                f"Available: {', '.join(sorted(map(tool_name, run2_tools)))}"
             )
-        common_tools = {tool1, tool2}
+        common_tools = run1_matches | run2_matches
     else:
         common_tools = find_tools(run_names, not args.all)
 
-        # Apply --tools filter if specified
+        # Apply --tools filter if specified. With --average-replicas, the
+        # filter matches the averaged names, so all replicas of a tool stay.
         if args.tools:
-            unknown = set(args.tools) - common_tools
+            available = set(map(tool_name, common_tools))
+            unknown = set(args.tools) - available
             if unknown:
                 print(f"Warning: the following tools were not found in the run(s) and will be ignored: {', '.join(sorted(unknown))}")
-            common_tools = common_tools.intersection(set(args.tools))
+            common_tools = tools_named(common_tools, set(args.tools))
             if not common_tools:
                 raise ValueError("No matching tools remain after applying --tools filter.")
 
         if args.compare_tools:
             tool1, tool2 = args.compare_tools
+            available = set(map(tool_name, common_tools))
             for t in [tool1, tool2]:
-                if t not in common_tools:
-                    raise ValueError(f"Tool '{t}' not found in the given run(s). Available tools: {', '.join(sorted(common_tools))}")
-            common_tools = {tool1, tool2}
+                if t not in available:
+                    raise ValueError(f"Tool '{t}' not found in the given run(s). Available tools: {', '.join(sorted(available))}")
+            common_tools = tools_named(common_tools, {tool1, tool2})
 
     df = make_merged_df(run_names, common_tools)
-    time_col = runtime_col(df)
-    print(f"Runtime column: {time_col}", file=sys.stderr)
+    time_col = RUNTIME_COL
 
     if args.show_failed or args.delete_failed or args.delete_failed_dry:
         failed_df = find_failed(df)
@@ -374,7 +403,7 @@ if __name__ == '__main__':
         sys.exit(0)
 
     if args.average_replicas:
-        df["tool"] = df["tool"].str.replace(r'_replica_\d+$', '', regex=True)
+        df["tool"] = df["tool"].map(tool_name)
 
     if args.compare_tools:
         tool1, tool2 = args.compare_tools
@@ -391,7 +420,9 @@ if __name__ == '__main__':
             for _lc in struct_diff_cols(merged, "_1", "_2"):
                 merged[f"{_lc}_diff"] = merged[f"{_lc}_2"] - merged[f"{_lc}_1"]
                 _lddt_diff_cols.append(f"{_lc}_diff")
-            merged["runtime_diff"] = merged["s_2"] - merged["s_1"]
+            merged["runtime_diff"] = (
+                merged[f"{time_col}_2"] - merged[f"{time_col}_1"]
+            )
 
             label1 = f"{tool1} ({run1_name})"
             label2 = f"{tool2} ({run2_name})"
@@ -454,7 +485,9 @@ if __name__ == '__main__':
             for _lc in struct_diff_cols(merged, f"_{tool1}", f"_{tool2}"):
                 merged[f"{_lc}_diff"] = merged[f"{_lc}_{tool2}"] - merged[f"{_lc}_{tool1}"]
                 _lddt_diff_cols2.append(f"{_lc}_diff")
-            merged["runtime_diff"] = merged[f"s_{tool2}"] - merged[f"s_{tool1}"]
+            merged["runtime_diff"] = (
+                merged[f"{time_col}_{tool2}"] - merged[f"{time_col}_{tool1}"]
+            )
 
             merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
 
@@ -491,7 +524,10 @@ if __name__ == '__main__':
         for _lc in struct_diff_cols(merged, f"_{run1_name}", f"_{run2_name}"):
             merged[f"{_lc}_diff"] = merged[f"{_lc}_{run2_name}"] - merged[f"{_lc}_{run1_name}"]
             _lddt_diff_cols3.append(f"{_lc}_diff")
-        merged["runtime_diff"] = merged[f"s_{run2_name}"] - merged[f"s_{run1_name}"]
+        merged["runtime_diff"] = (
+            merged[f"{time_col}_{run2_name}"]
+            - merged[f"{time_col}_{run1_name}"]
+        )
 
         # Sort by TC difference (descending)
         merged_sorted = merged.sort_values(by="TC_diff", ascending=False)
@@ -580,7 +616,7 @@ if __name__ == '__main__':
                 df.groupby(["tool"])[_cols].mean()
             )
 
-    if args.barplots or args.barplot_lddt:
+    if args.barplots or args.barplot_lddt is not None:
         from plots import barplot, barplot_lddt
         tool_order = args.tools if args.tools else None
         if len(run_names) == 1:
@@ -598,16 +634,36 @@ if __name__ == '__main__':
                         continue
                     _parts = _line.split(None, 1)
                     if len(_parts) == 2:
-                        tool_name_map[_parts[0]] = _parts[1]
+                        # A literal "\n" in the plot name is a line break
+                        tool_name_map[_parts[0]] = _parts[1].replace("\\n", "\n")
         plot_title = args.barplot_title if args.barplot_title else name
         plot_fontsize = args.barplot_fontsize
+        both_plots = bool(args.barplots and args.barplot_lddt is not None)
+
+        def plot_path(default_name: str, suffix: str = "") -> str:
+            """Output path of a plot, honoring --barplot_output."""
+            out = args.barplot_output
+            if out is None:
+                return os.path.join("plots", default_name)
+            stem, ext = os.path.splitext(out)
+            if not ext:
+                return os.path.join(out, default_name)
+            return f"{stem}{suffix}{ext}"
+
         if args.barplots:
-            barplot(df, run_name=name, tools=tool_order, output_path=f"plots/{name}_barplot.pdf",
+            barplot(df, run_name=name, tools=tool_order,
+                    output_path=plot_path(f"{name}_barplot.pdf"),
                     title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map,
                     time_col=time_col)
-        if args.barplot_lddt:
-            lddt_col = args.barplot_lddt
-            barplot_lddt(df, run_name=name, tools=tool_order, lddt_col=lddt_col,
-                         output_path=f"plots/{name}_barplot_{lddt_col}.pdf",
+        if args.barplot_lddt is not None:
+            lddt_cols = args.barplot_lddt or ["lddt_muscle", "lddt"]
+            if len(lddt_cols) > 2:
+                argparser.error("--barplot_lddt takes at most two scores.")
+            lddt_tag = "_".join(lddt_cols)
+            barplot_lddt(df, run_name=name, tools=tool_order,
+                         lddt_cols=lddt_cols,
+                         output_path=plot_path(
+                             f"{name}_barplot_{lddt_tag}.pdf",
+                             f"_{lddt_tag}" if both_plots else ""),
                          title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map,
                          time_col=time_col)

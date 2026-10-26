@@ -1,6 +1,12 @@
-learnMSA2_struct    learnMSA (emb + 3Di)
-learnMSA2   learnMSA (emb)
-learnMSA_struct learnMSA (3Di)
+learnMSA2_struct    learnMSA2 3Di\n+ ProtT5\n+ ProstT5
+learnMSA2   learnMSA2\n+ ProtT5
+learnMSA_struct learnMSA 3Di\n+ ProstT5
 learnMSA learnMSA
 famsa FAMSA
+clustalo Clustal Omega
+kalign Kalign
+mafft MAFFT
+mafft_3Di MAFFT 3Di
+muscle_super5 Muscle (Super5)
+t-coffee T-Coffee
 foldmason FoldMason
