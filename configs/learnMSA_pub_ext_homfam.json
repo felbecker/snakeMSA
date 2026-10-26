@@ -1,0 +1,75 @@
+{
+    "name": "learnMSA_pub_ext_homfam",
+    "tools": {
+        "learnMSA_replica_1": {
+            "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
+            "params": [
+                "-i {input}",
+                "-o {output}",
+                "--work_dir {workdir}",
+                "--save_model",
+                "--seed 0"
+            ]
+        },
+        "learnMSA_replica_2": {
+            "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
+            "params": [
+                "-i {input}",
+                "-o {output}",
+                "--work_dir {workdir}",
+                "--save_model",
+                "--seed 1"
+            ]
+        },
+        "learnMSA_replica_3": {
+            "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
+            "params": [
+                "-i {input}",
+                "-o {output}",
+                "--work_dir {workdir}",
+                "--save_model",
+                "--seed 2"
+            ]
+        },
+        "learnMSA_struct_replica_1": {
+            "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
+            "params": [
+                "-i {input}",
+                "--struct",
+                "-o {output}",
+                "--work_dir {workdir}",
+                "--save_model",
+                "--seed 0"
+            ]
+        },
+        "learnMSA_struct_replica_2": {
+            "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
+            "params": [
+                "-i {input}",
+                "--struct",
+                "-o {output}",
+                "--work_dir {workdir}",
+                "--save_model",
+                "--seed 1"
+            ]
+        },
+        "learnMSA_struct_replica_3": {
+            "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
+            "params": [
+                "-i {input}",
+                "--struct",
+                "-o {output}",
+                "--work_dir {workdir}",
+                "--save_model",
+                "--seed 2"
+            ]
+        }
+    },
+    "data_path": "data/ext_homfam",
+    "pdb": "pdb",
+    "use_gpu": 1,
+    "align_threads": 4,
+    "align_mem": 32000,
+    "align_runtime": "12h",
+    "cleanup": true
+}
