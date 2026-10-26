@@ -24,6 +24,14 @@
           "{output}",
           "{workdir}"
         ]
+      },
+      "famsa": {
+          "command": "bin/famsa",
+          "params": [
+              "-t {threads}",
+              "{input}",
+              "{output}"
+          ]
       }
     },
     "data_path": "data/afdb-clusters-test",
