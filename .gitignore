@@ -48,6 +48,7 @@ configs/*
 !configs/competition_pub_afdb_clusters.json
 !configs/competition_pub_afdb_max_cluster.json
 !configs/competition_pub_ext_homfam.json
+!configs/competition_pub_size_scale_ext_homfam.json
 profiles/
 slurm/
 

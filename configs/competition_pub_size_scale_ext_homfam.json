@@ -1,0 +1,65 @@
+{
+    "name": "competition_pub_size_scale_ext_homfam",
+    "tools": {
+        "famsa": {
+            "command": "bin/famsa",
+            "params": [
+                "-t {threads}",
+                "{input}",
+                "{output}"
+            ]
+        },
+        "kalign": {
+            "command": "bin/kalign",
+            "params": [
+                "-n {threads}",
+                "-i {input}",
+                "-o {output}"
+            ]
+        },
+        "clustalo": {
+            "command": "conda run -n clustalo clustalo",
+            "params": [
+                "--threads={threads}",
+                "-i {input}",
+                "-o {output}"
+            ]
+        },
+        "mafft": {
+            "command": "conda run -n mafft mafft",
+            "params": [
+                "--thread {threads}",
+                "--anysymbol",
+                "--quiet",
+                "{input}"
+            ]
+        },
+        "mafft_3Di": {
+            "command": "conda run -n mafft bash tools/mafft_3di.sh",
+            "params": [
+                "--thread {threads}",
+                "--anysymbol",
+                "--quiet",
+                "{struct}",
+                "{input}"
+            ]
+        },
+        "muscle_super5": {
+            "command": "conda run -n muscle muscle",
+            "params": [
+                "-super5 {input}",
+                "-output {output}"
+            ]
+        }
+    },
+    "data_path": "data/size_scale_ext_homfam",
+    "struct_data": "predicted_3di",
+    "pdb": "pdb",
+    "use_gpu": 0,
+    "align_threads": 32,
+    "score_threads": 4,
+    "align_mem": 128000,
+    "align_runtime": "24h",
+    "score_mem": 16000,
+    "cleanup": true
+}
