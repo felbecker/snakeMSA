@@ -62,6 +62,46 @@ def tool_palettes(
     return light, full
 
 
+def replica_means(data: pd.DataFrame, col: str) -> Dict[str, np.ndarray]:
+    """Per tool, the mean of ``col`` over all rows (families) of each replica.
+
+    Only tools with at least two replicas are returned, so a tool without
+    replicas, or a dataframe without a ``replica`` column, gets no error bar.
+    """
+    if "replica" not in data.columns:
+        return {}
+    per_replica = data.groupby(["tool", "replica"])[col].mean().dropna()
+    result = {}
+    for tool, values in per_replica.groupby(level="tool"):
+        if len(values) >= 2:
+            result[tool] = values.to_numpy()
+    return result
+
+
+def draw_replica_errors(
+    ax: plt.Axes, data: pd.DataFrame, col: str, display_order: List[str],
+) -> None:
+    """Draw, at the top of each bar of ``col``, the error of the replicas: the
+    sample standard deviation of the per-replica means over all families, as
+    an error bar, together with the individual replica means as dots."""
+    bar_heights = data.groupby("tool")[col].mean()
+    per_tool = replica_means(data, col)
+    for i, tool in enumerate(display_order):
+        values = per_tool.get(tool)
+        if values is None:
+            continue
+        ax.errorbar(
+            i, bar_heights[tool], yerr=np.std(values, ddof=1), fmt="none",
+            ecolor=".2", elinewidth=1.5, capsize=4, capthick=1.5, zorder=4,
+        )
+        offsets = np.linspace(-0.12, 0.12, len(values)) if len(values) > 1 \
+            else [0]
+        ax.scatter(
+            i + np.asarray(offsets), values, s=14, color=".2",
+            edgecolor="white", linewidth=0.5, zorder=5,
+        )
+
+
 def barplot(
     df: pd.DataFrame,
     run_name: str,
@@ -80,6 +120,8 @@ def barplot(
     df:
         Merged dataframe as returned by ``make_merged_df`` from summarize.py,
         already filtered to this run.
+        With a ``replica`` column (``--average-replicas``), error bars show
+        the standard deviation of the per-replica means over all families.
     run_name:
         Name used for the default output filename.
     tools:
@@ -137,7 +179,7 @@ def barplot(
     # SP-Score bars (faded)
     sns.barplot(
         data=data, x="tool", y="SP-Score", hue="tool", order=display_order,
-        err_kws={"color": ".4", "linewidth": 1.5}, capsize=0.2,
+        errorbar=None,
         linewidth=1, edgecolor=".6",
         palette=color_light, ax=ax,
     )
@@ -148,6 +190,9 @@ def barplot(
         errorbar=None,
         palette=color_full, ax=ax,
     )
+
+    draw_replica_errors(ax, data, "SP-Score", display_order)
+    draw_replica_errors(ax, data, "TC", display_order)
 
     # Runtime labels centred on each bar group
     y_min = means["TC"].min()
@@ -223,6 +268,8 @@ def barplot_lddt(
     ----------
     df:
         Merged dataframe as returned by ``make_merged_df`` from summarize.py.
+        With a ``replica`` column (``--average-replicas``), error bars show
+        the standard deviation of the per-replica means over all families.
     run_name:
         Name used for the default output filename.
     tools:
@@ -291,7 +338,7 @@ def barplot_lddt(
     # First (larger) score; faded if a second one is drawn on top
     sns.barplot(
         data=data, x="tool", y=top_col, hue="tool", order=display_order,
-        err_kws={"color": ".4", "linewidth": 1.5}, capsize=0.2,
+        errorbar=None,
         linewidth=1, edgecolor=".6",
         palette=color_light if two_scores else color_full, ax=ax,
     )
@@ -303,6 +350,9 @@ def barplot_lddt(
             errorbar=None,
             palette=color_full, ax=ax,
         )
+
+    for col in dict.fromkeys(lddt_cols):
+        draw_replica_errors(ax, data, col, display_order)
 
     # Runtime labels centred on each bar
     y_min = means[bottom_col].min()

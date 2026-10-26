@@ -403,6 +403,9 @@ if __name__ == '__main__':
         sys.exit(0)
 
     if args.average_replicas:
+        # Keep the replica id (NaN without a suffix): the bar plots estimate
+        # their error bars from the variation between replicas.
+        df["replica"] = df["tool"].str.extract(r'_replica_(\d+)$')[0]
         df["tool"] = df["tool"].map(tool_name)
 
     if args.compare_tools:
