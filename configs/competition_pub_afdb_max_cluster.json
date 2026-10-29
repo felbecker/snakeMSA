@@ -9,6 +9,15 @@
           "{workdir}"
         ]
       },
+      "foldmason_precluster" : {
+        "command": "conda run -n foldmason bash run/foldmason.sh",
+        "params": [
+          "{pdb}",
+          "{output}",
+          "{workdir}",
+          "--precluster"
+        ]
+      },
     "muscle_3d_super7" : {
         "command": "conda run -n muscle bash run/muscle3D_super7.sh",
         "params": [
