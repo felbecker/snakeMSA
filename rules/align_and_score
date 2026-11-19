@@ -1,11 +1,13 @@
 # type: ignore
 #
 # Cleanup mode (config "cleanup": true): align and score a sample in a single
-# job, then delete its MSA, projection and work dir. Separate align and
-# score_msa jobs could let many alignments pile up before their scoring runs,
-# which overflows storage in large experiments. Scores and benchmarks are
-# written to the same files as in the default mode, so concat_scores and the
-# results file are unchanged.
+# job, then delete its MSA and work dir. Separate align and score_msa jobs
+# could let many alignments pile up before their scoring runs, which
+# overflows storage in large experiments. Scores and benchmarks are written
+# to the same files as in the default mode, so concat_scores and the results
+# file are unchanged. The projection onto the reference sequences is small
+# and kept, so the scores can be recomputed from it without realigning
+# (rescore mode, rule rescore_projection in rules/score_msa).
 import shutil
 from types import SimpleNamespace
 
@@ -19,7 +21,7 @@ def runtime_minutes(value):
     return max(int(round(parse_timespan(value) / 60)), 1)
 
 
-if CLEANUP:
+if CLEANUP and not RESCORE:
     rule align_and_score:
         input:
             unaligned=data_file("unaligned", "{sample}")
@@ -48,7 +50,9 @@ if CLEANUP:
                 "outputs/"+config["name"]+"/{tool}/logs/score_{sample}.err"
             ),
         params:
-            # intermediate files, deleted at the end of the job
+            # intermediate files, deleted at the end of the job except for
+            # the projection. The projection is not an output, so snakemake
+            # keeps it even when scoring fails, which is when it is needed.
             msa="outputs/"+config["name"]+"/{tool}/alignments/{sample}",
             proj="outputs/"+config["name"]+"/{tool}/projections/{sample}",
             workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
@@ -108,8 +112,13 @@ if CLEANUP:
                     wildcards,
                 )
             finally:
-                # also on failure, so that failed jobs cannot fill the disk
-                for path in (params.msa, params.proj):
+                # also on failure, so that failed jobs cannot fill the disk.
+                # Without a reference, the "projection" is the whole MSA in
+                # plain FASTA, so it goes too.
+                removed = [params.msa, params.proj + ".tmp"]
+                if params.ref == "":
+                    removed.append(params.proj)
+                for path in removed:
                     if os.path.exists(path):
                         os.remove(path)
                 if os.path.exists(params.workdir):

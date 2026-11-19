@@ -295,7 +295,7 @@ def align_sample(input, output, params, log, threads, wildcards):
             time_file.write(f"{tool_seconds:.4f}")
 
 
-if not CLEANUP:
+if not CLEANUP and not RESCORE:
     rule align:
         input:
             unaligned=data_file("unaligned", "{sample}")

@@ -185,49 +185,88 @@ def resolve_ref_pdb_path(wildcards):
     return data_file(config["ref_pdb"], os.path.splitext(wildcards.sample)[0])
 
 
+FAILED_MARKER = "FAILED"
+
+
+def project_sample(input, output, params, log):
+    """Project the MSA input.est onto the reference sequences, writing
+    output.proj.
+
+    The projection is all that score_projection needs, so the scores can be
+    recomputed from it after the full MSA is gone (cleanup mode keeps it,
+    see rules/align_and_score). Without a reference, the "projection" is the
+    whole MSA in plain aligned FASTA. A failed MSA gives a projection that
+    holds just the FAILED marker. The projection is written to a temporary
+    file and then renamed, so a crash cannot leave a truncated one behind
+    that would later be rescored as if it were complete.
+    """
+    os.makedirs(os.path.dirname(log.stdout), exist_ok=True)
+    os.makedirs(os.path.dirname(output.proj), exist_ok=True)
+    tmp_proj = output.proj + ".tmp"
+
+    # binary mode: the MSA may be gzip compressed (learnMSA --compress)
+    with open(input.est, "rb") as est_file:
+        msa_failed = est_file.readline().strip() == FAILED_MARKER.encode()
+
+    if msa_failed:
+        with open(tmp_proj, "w") as proj_file:
+            proj_file.write(FAILED_MARKER + "\n")
+    elif params.ref == "":
+        # no reference MSA available: nothing to project onto.
+        # foldmason treats "." as residues
+        normalize_msa(input.est, tmp_proj)
+    else:
+        shell(
+            "python tools/project_msa.py"
+            + " --msa {input.est}"
+            + " --ref {params.ref}"
+            + " --out {tmp_proj}"
+            + " >> {log.stdout} 2>> {log.stderr}"
+        )
+    os.replace(tmp_proj, output.proj)
+
+
+def projection_failed(proj_path):
+    """True if the projection belongs to a failed MSA: it holds the FAILED
+    marker, or it is empty (how failures were recorded before the marker)."""
+    with open(proj_path) as proj_file:
+        first_line = proj_file.readline().strip()
+    return first_line in ("", FAILED_MARKER)
+
+
 def score_sample(input, output, params, log, threads, wildcards):
     """Score the MSA input.est, writing output.proj and output.score.
 
     Shared by the score_msa rule and the fused align_and_score rule (cleanup
-    mode). The arguments only need attribute access to the fields used here;
+    mode).
+    """
+    project_sample(input, output, params, log)
+    score_projection(output, output, params, log, threads, wildcards)
+
+
+def score_projection(input, output, params, log, threads, wildcards):
+    """Score the projected MSA input.proj, writing output.score.
+
+    Used by score_sample and, in rescore mode, by the rescore_projection
+    rule. The arguments only need attribute access to the fields used here;
     the shell() calls format against these parameter names.
     """
     # Ensure log directory exists before any shell calls write to it
     os.makedirs(os.path.dirname(log.stdout), exist_ok=True)
-
-    msa_failed = False
-    # binary mode: the MSA may be gzip compressed (learnMSA --compress)
-    with open(input.est, "rb") as est_file:
-        if est_file.readline().strip() == b"FAILED":
-            msa_failed = True
+    os.makedirs(os.path.dirname(output.score), exist_ok=True)
 
     # strip the extension from the sample name
     sample_name = os.path.basename(wildcards.sample).rsplit('.', 1)[0]
 
-    # Create folders if they do not exist
-    os.makedirs(os.path.dirname(output.proj), exist_ok=True)
-    os.makedirs(os.path.dirname(output.score), exist_ok=True)
-
-    if not msa_failed:
+    if not projection_failed(input.proj):
 
         success_flag = 1
         if params.ref == "":
-            # no reference MSA available: skip projection/FastSP scoring.
-            # foldmason treats "." as residues
-            normalize_msa(input.est, output.proj)
+            # no reference MSA available: skip FastSP scoring
             values = ['-1'] * 7
         else:
-            # first project the estimated msa w.r.t. the reference sequences
-            shell(
-                "python tools/project_msa.py"
-                + " --msa {input.est}"
-                + " --ref {params.ref}"
-                + " --out {output.proj}"
-                + " >> {log.stdout} 2>> {log.stderr}"
-            )
-            # compute scores
             fastsp_output = shell(
-                "java -jar FastSP/FastSP.jar -r {params.ref} -e {output.proj} -mlr"
+                "java -jar FastSP/FastSP.jar -r {params.ref} -e {input.proj} -mlr"
                 + " 2>> {log.stderr}",
                 read=True
             )
@@ -239,12 +278,12 @@ def score_sample(input, output, params, log, threads, wildcards):
         # compute lddt scores using foldmason and pylddt, against all
         # structures or, with ref_pdb, against the reference subset only
         struct_dir = params.ref_pdb or params.pdb
-        struct_msa = output.proj
+        struct_msa = input.proj
         if params.ref_pdb and os.path.exists(struct_dir):
             os.makedirs(params.workdir, exist_ok=True)
             struct_msa = params.workdir + "ref_pdb_msa.fa"
             n_missing, n_ref, examples = restrict_msa_to_structures(
-                output.proj, struct_dir, struct_msa
+                input.proj, struct_dir, struct_msa
             )
             if n_missing:
                 # pylddt only rejects rows without a structure, so a missing
@@ -388,9 +427,7 @@ def score_sample(input, output, params, log, threads, wildcards):
                     dali_z = "-1"
 
     else:
-        # If project_msa.py fails, create an empty output.proj
-        with open(output.proj, 'w') as f:
-            pass
+        # the MSA failed
         success_flag = 0
         values = ['0'] * 7
         lddt = "0"
@@ -402,7 +439,7 @@ def score_sample(input, output, params, log, threads, wildcards):
         f.write(f"{sample_name} {success_flag} {' '.join(values)} {lddt} {lddt_core} {lddt_muscle} {dali_z}")
 
 
-if not CLEANUP:
+if not CLEANUP and not RESCORE:
     rule score_msa:
         input:
             est = "outputs/"+config["name"]+"/{tool}/alignments/{sample}",
@@ -424,6 +461,43 @@ if not CLEANUP:
             lddt_muscle_only=bool(config.get("lddt_muscle_only", False))
         run:
             score_sample(input, output, params, log, threads, wildcards)
+
+
+if RESCORE:
+    # Rescore mode (config "rescore": true): recompute the scores from the
+    # kept projections alone, e.g. after a scoring failure or a change to
+    # the scoring functions. The align rules are not defined in this mode,
+    # so the existing benchmarks are used as they are and nothing is
+    # realigned. Run with --forcerun rescore_projection, as the score files
+    # usually exist already.
+    rule rescore_projection:
+        input:
+            proj = "outputs/"+config["name"]+"/{tool}/projections/{sample}"
+        output:
+            score = "outputs/"+config["name"]+"/{tool}/scores/{sample}.score"
+        threads: config["score_threads"] if "score_threads" in config else 8
+        resources:
+            mem_mb = config["score_mem"] if "score_mem" in config else 16000,
+            runtime = config["score_runtime"] if "score_runtime" in config else "10m",
+        log:
+            stdout="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.log",
+            stderr="outputs/"+config["name"]+"/{tool}/logs/score_{sample}.err",
+        params:
+            workdir="outputs/"+config["name"]+"/{tool}/workdirs/{sample}/",
+            ref=resolve_ref_path,
+            pdb=resolve_pdb_path,
+            ref_pdb=resolve_ref_pdb_path,
+            lddt_muscle_only=bool(config.get("lddt_muscle_only", False))
+        run:
+            try:
+                score_projection(
+                    input, output, params, log, threads, wildcards
+                )
+            finally:
+                # the foldmason db and ref_pdb subset; without cleanup, the
+                # work dir also holds the aligner's files and is kept
+                if CLEANUP and os.path.exists(params.workdir):
+                    remove_tree(params.workdir)
 
 
 rule concat_scores:

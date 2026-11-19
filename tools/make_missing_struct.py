@@ -49,7 +49,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path,
                         default=Path("data/afdb-clusters-missing-struct"))
     parser.add_argument("--p", type=float, nargs="+",
-                        default=[0, 0.05, 0.1, 0.25, 0.5, 0.75])
+                        default=[0, 0.1, 0.25, 0.5, 0.75])
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 

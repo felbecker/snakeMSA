@@ -11,9 +11,14 @@ def config_flag(key, default=False):
     return bool(value)
 
 
-# Fuse alignment and scoring into one job per sample and delete the MSA,
-# projection and work dir once the scores are written (rules/align_and_score).
+# Fuse alignment and scoring into one job per sample and delete the MSA and
+# work dir once the scores are written, keeping the (small) projection
+# (rules/align_and_score).
 CLEANUP = config_flag("cleanup")
+
+# Recompute the scores from the kept projections without realigning
+# (rule rescore_projection in rules/score_msa).
+RESCORE = config_flag("rescore")
 
 
 def data_file(*parts):

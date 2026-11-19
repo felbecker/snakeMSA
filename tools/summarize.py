@@ -119,6 +119,16 @@ argparser.add_argument(
          "a literal '\\n' in name_in_plot starts a new line."
 )
 argparser.add_argument(
+    '--fixed_order', action='store_true',
+    help="Plot the tools in the order given by --tools instead of sorting "
+         "them by score. Requires --tools."
+)
+argparser.add_argument(
+    '--runtime_line', action='store_true',
+    help="In bar plots, show the runtime as red dots connected by a red "
+         "line on a second y axis (right hand side) instead of labels."
+)
+argparser.add_argument(
     '--barplot_output', type=str, default=None, metavar='PATH',
     help="Where to save bar plots. A path with an extension (e.g. "
          "figs/my_plot.pdf) is used as the file name; anything else is "
@@ -128,6 +138,8 @@ argparser.add_argument(
 )
 
 args = argparser.parse_args()
+if args.fixed_order and not args.tools:
+    argparser.error("--fixed_order requires --tools.")
 
 def expand_run_patterns(patterns: List[str]) -> List[str]:
     """
@@ -657,7 +669,8 @@ if __name__ == '__main__':
             barplot(df, run_name=name, tools=tool_order,
                     output_path=plot_path(f"{name}_barplot.pdf"),
                     title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map,
-                    time_col=time_col)
+                    time_col=time_col, runtime_line=args.runtime_line,
+                    sort_by_score=not args.fixed_order)
         if args.barplot_lddt is not None:
             lddt_cols = args.barplot_lddt or ["lddt_muscle", "lddt"]
             if len(lddt_cols) > 2:
@@ -669,4 +682,6 @@ if __name__ == '__main__':
                              f"{name}_barplot_{lddt_tag}.pdf",
                              f"_{lddt_tag}" if both_plots else ""),
                          title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map,
-                         time_col=time_col)
+                         time_col=time_col,
+                         runtime_line=args.runtime_line,
+                         sort_by_score=not args.fixed_order)

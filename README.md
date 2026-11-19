@@ -84,9 +84,18 @@ Job resources can be customized in the configuration file. See `configs/default.
 ## Large experiments: cleanup
 
 Set `"cleanup": true` in the configuration file (or pass `--config cleanup=true`) when the outputs of all samples do not fit into storage at once.
-Each sample is then aligned and scored in a single job, after which its alignment, projected alignment and working directory are deleted.
-Scores, benchmarks and logs are kept, and the results files are identical to a run without cleanup (the benchmark still measures only the alignment step).
+Each sample is then aligned and scored in a single job, after which its alignment and working directory are deleted.
+Scores, benchmarks, logs and the projected alignments (`outputs/<name>/<tool>/projections/`, the estimated alignment restricted to the reference sequences, which is typically small) are kept, and the results files are identical to a run without cleanup (the benchmark still measures only the alignment step).
+For samples without a reference alignment, the projection would be the full alignment and is deleted as well.
 The job requests the alignment threads and GPU, the larger of `align_mem` and `score_mem`, and `align_runtime` plus `score_runtime`.
+
+### Rescoring from projections
+
+All scores are computed from the projected alignments alone. When scoring went wrong or the scoring functions changed, recompute the scores without realigning:
+
+`conda run -n snakeMSA snakemake --configfile <config> --config rescore=true --forcerun rescore_projection`
+
+In rescore mode, no alignment rules are defined: the existing benchmarks are reused, and a sample without a projection fails with missing input files. `--forcerun` is needed because the score files usually exist already; the results files are then rebuilt from the new scores. This works with and without cleanup.
 
 ## Runtime measurement
 

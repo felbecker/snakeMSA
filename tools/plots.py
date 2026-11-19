@@ -30,6 +30,8 @@ TOOL_COLOR_INDEX = {
     "muscle_super5": 3,
     "t-coffee": 10,
     "foldmason": 11,
+    "muscle_3d": 12,
+    "muscle_3d_super7": 13,
 }
 
 
@@ -102,6 +104,74 @@ def draw_replica_errors(
         )
 
 
+def sorted_tools(
+    df: pd.DataFrame, candidates: List[str], col: str, sort_by_score: bool,
+) -> List[str]:
+    """``candidates`` sorted by the mean of ``col`` descending, or in their
+    given order if not ``sort_by_score``."""
+    if not sort_by_score:
+        return list(candidates)
+    return (
+        df[df["tool"].isin(candidates)].groupby("tool")[col].mean()
+        .sort_values(ascending=False)
+        .index.tolist()
+    )
+
+
+def format_runtime(seconds: float) -> str:
+    """A runtime label in the largest fitting unit (s, m or h)."""
+    if seconds >= 3600:
+        return f"{seconds / 3600:.2f} h"
+    if seconds >= 60:
+        return f"{seconds / 60:.1f} m"
+    return f"{seconds:.0f} s"
+
+
+def draw_runtime(
+    ax: plt.Axes,
+    seconds: pd.Series,
+    display_order: List[str],
+    label_y: float,
+    font_size: float,
+    runtime_line: bool = False,
+) -> None:
+    """Show the mean runtime of each tool.
+
+    By default, as a text label at height ``label_y`` over each bar. With
+    ``runtime_line``, as red dots connected by a red line on a second y axis
+    on the right hand side, in the unit that fits the largest runtime.
+    """
+    seconds = seconds.loc[display_order]
+    if not runtime_line:
+        for tool in display_order:
+            ax.text(
+                tool, label_y, format_runtime(seconds[tool]),
+                ha="center", va="center",
+                color="black", fontsize=font_size * 0.85,
+                path_effects=[pe.withStroke(linewidth=3, foreground="white")],
+            )
+        return
+
+    longest = seconds.max()
+    if longest >= 3600:
+        unit, scale = "h", 3600
+    elif longest >= 60:
+        unit, scale = "min", 60
+    else:
+        unit, scale = "s", 1
+    rt_ax = ax.twinx()
+    # The grid of the score axis is enough; a second one would not align
+    rt_ax.grid(False)
+    rt_ax.plot(
+        np.arange(len(display_order)), seconds.to_numpy() / scale,
+        color="red", marker="o", markersize=6, linewidth=1.5, zorder=6,
+    )
+    rt_ax.set_ylim(bottom=0)
+    rt_ax.set_ylabel(f"Runtime ({unit})", color="red", fontsize=font_size)
+    rt_ax.tick_params(axis="y", colors="red", labelsize=font_size)
+    rt_ax.spines["right"].set_color("red")
+
+
 def barplot(
     df: pd.DataFrame,
     run_name: str,
@@ -111,6 +181,8 @@ def barplot(
     font_size: Optional[int] = None,
     tool_name_map: Optional[dict] = None,
     time_col: str = "s",
+    runtime_line: bool = False,
+    sort_by_score: bool = True,
 ) -> None:
     """Create a bar plot for a single run overlaying SP-Score (faded) and TC
     (solid) bars, with mean runtime as a label over each bar group.
@@ -138,6 +210,12 @@ def barplot(
         Mapping from dataframe tool names to display names shown on the plot.
     time_col:
         Runtime column for the labels, e.g. "s", "tool_s" or "runtime".
+    runtime_line:
+        Instead of runtime labels, plot the runtimes as red dots connected
+        by a red line on a second y axis on the right hand side.
+    sort_by_score:
+        Sort the tools by score. If *False*, plot them in the order of
+        *tools* (all tools in *df* in order of appearance if *None*).
     """
     sns.set_style("whitegrid")
 
@@ -148,12 +226,7 @@ def barplot(
     else:
         candidates = [t for t in tools if t in available]
 
-    # Always sort by mean TC descending
-    order = (
-        df[df["tool"].isin(candidates)].groupby("tool")["TC"].mean()
-        .sort_values(ascending=False)
-        .index.tolist()
-    )
+    order = sorted_tools(df, candidates, "TC", sort_by_score)
 
     if not order:
         raise ValueError("No matching tools found in the dataframe.")
@@ -198,22 +271,8 @@ def barplot(
     y_min = means["TC"].min()
     y_mid = means["SP-Score"].max()
     label_y = y_min + (y_mid - y_min) / 2
-
-    for tool in display_order:
-        seconds = means.loc[tool, time_col]
-        hours = seconds / 3600
-        if hours >= 1:
-            label = f"{hours:.2f} h"
-        elif seconds >= 60:
-            label = f"{seconds / 60:.1f} m"
-        else:
-            label = f"{seconds:.0f} s"
-        ax.text(
-            tool, label_y, label,
-            ha="center", va="center",
-            color="black", fontsize=font_size * 0.85,
-            path_effects=[pe.withStroke(linewidth=3, foreground="white")],
-        )
+    draw_runtime(ax, means[time_col], display_order, label_y, font_size,
+                 runtime_line)
 
     ax.set_xlabel("")
     ax.set_ylabel("SP-Score (fade) / TC (solid)", fontsize=font_size)
@@ -256,6 +315,8 @@ def barplot_lddt(
     font_size: Optional[int] = None,
     tool_name_map: Optional[dict] = None,
     time_col: str = "s",
+    runtime_line: bool = False,
+    sort_by_score: bool = True,
 ) -> None:
     """Create a bar plot for a single run showing LDDT bars, with
     mean runtime as a label over each bar.
@@ -290,6 +351,12 @@ def barplot_lddt(
         Mapping from dataframe tool names to display names shown on the plot.
     time_col:
         Runtime column for the labels, e.g. "s", "tool_s" or "runtime".
+    runtime_line:
+        Instead of runtime labels, plot the runtimes as red dots connected
+        by a red line on a second y axis on the right hand side.
+    sort_by_score:
+        Sort the tools by score. If *False*, plot them in the order of
+        *tools* (all tools in *df* in order of appearance if *None*).
     """
     sns.set_style("whitegrid")
 
@@ -305,12 +372,7 @@ def barplot_lddt(
     else:
         candidates = [t for t in tools if t in available]
 
-    # Sort by the mean of the first score descending
-    order = (
-        df[df["tool"].isin(candidates)].groupby("tool")[top_col].mean()
-        .sort_values(ascending=False)
-        .index.tolist()
-    )
+    order = sorted_tools(df, candidates, top_col, sort_by_score)
 
     if not order:
         raise ValueError("No matching tools found in the dataframe.")
@@ -358,22 +420,8 @@ def barplot_lddt(
     y_min = means[bottom_col].min()
     y_mid = means[top_col].max()
     label_y = y_min + (y_mid - y_min) / 2
-
-    for tool in display_order:
-        seconds = means.loc[tool, time_col]
-        hours = seconds / 3600
-        if hours >= 1:
-            label = f"{hours:.2f} h"
-        elif seconds >= 60:
-            label = f"{seconds / 60:.1f} m"
-        else:
-            label = f"{seconds:.0f} s"
-        ax.text(
-            tool, label_y, label,
-            ha="center", va="center",
-            color="black", fontsize=font_size * 0.85,
-            path_effects=[pe.withStroke(linewidth=3, foreground="white")],
-        )
+    draw_runtime(ax, means[time_col], display_order, label_y, font_size,
+                 runtime_line)
 
     ax.set_xlabel("")
     if two_scores:
@@ -396,4 +444,202 @@ def barplot_lddt(
 
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     print(f"Saved LDDT bar plot to {output_path}")
+    plt.close(fig)
+
+
+#: Marker shapes of the tools drawn as single points next to the curve.
+OTHER_TOOL_MARKERS = ["s", "^", "D", "v", "P", "X", "*", "<", ">"]
+
+
+def draw_replica_spread(
+    ax: plt.Axes, x: float, mean: float, values: np.ndarray,
+) -> None:
+    """Error of the replicas as in the bar plots: the standard deviation of
+    the per-replica means as an error bar at ``mean``, with the replica
+    means as dots."""
+    if len(values) < 2:
+        return
+    ax.errorbar(x, mean, yerr=np.std(values, ddof=1), fmt="none",
+                ecolor=".2", elinewidth=1.5, capsize=4, capthick=1.5,
+                zorder=4)
+    ax.scatter(np.full(len(values), x), values, s=14, color=".2",
+               edgecolor="white", linewidth=0.5, zorder=5)
+
+
+def missing_struct_curve(
+    df: pd.DataFrame,
+    score_col: str = "lddt_muscle",
+    output_path: str = "missing_struct_curve.pdf",
+    title: Optional[str] = None,
+    font_size: Optional[int] = None,
+    tool: str = "learnMSA_struct",
+    others: Optional[pd.DataFrame] = None,
+    tool_name_map: Optional[dict] = None,
+    curve_label: Optional[str] = None,
+) -> None:
+    """Line plot of a score over the fraction p of available structures,
+    from p = 1 (all structures) on the left to p = 0 on the right.
+
+    Parameters
+    ----------
+    df:
+        One row per alignment with the columns ``p``, ``replica`` and
+        ``score_col``.
+    score_col:
+        Score on the y axis.
+    output_path:
+        File path to save the figure (PDF).
+    title:
+        Title for the figure. No title if *None*.
+    font_size:
+        Base font size. Defaults to 10.
+    tool:
+        Tool of the curve, for its color and legend label.
+    others:
+        Other tools, drawn as one point each (own marker, in their usual
+        color) at the p given in their rows, with a legend. One row per
+        alignment with the columns ``tool``, ``p``, ``replica`` and
+        ``score_col``.
+    tool_name_map:
+        Mapping from tool names to legend labels.
+    curve_label:
+        Legend label of the curve, instead of the mapped name of *tool*.
+    """
+    sns.set_style("whitegrid")
+    font_size = font_size if font_size is not None else 10
+    names = tool_name_map or {}
+
+    def label(name: str) -> str:
+        return names.get(name, name).replace("\n", " ")
+
+    means = df.groupby("p")[score_col].mean().sort_index(ascending=False)
+    per_replica = df.groupby(["p", "replica"])[score_col].mean()
+
+    with_others = others is not None and len(others) > 0
+    # Room for the legend next to the axes
+    fig, ax = plt.subplots(figsize=(7.5 if with_others else 5, 4))
+    if title is not None:
+        fig.suptitle(title, fontsize=font_size + 2, fontweight="bold")
+    ax.plot(means.index, means.values, color=tool_color(tool), marker="o",
+            lw=2, zorder=3,
+            label=curve_label if curve_label is not None else label(tool))
+    for p, values in per_replica.groupby(level="p"):
+        draw_replica_spread(ax, p, means[p], values.to_numpy())
+
+    if with_others:
+        order = list(dict.fromkeys(others["tool"]))
+        for k, other in enumerate(order):
+            rows = others[others["tool"] == other]
+            mean = rows[score_col].mean()
+            x = rows["p"].iloc[0]
+            ax.scatter(x, mean, s=60, color=tool_color(other),
+                       marker=OTHER_TOOL_MARKERS[k % len(OTHER_TOOL_MARKERS)],
+                       edgecolor=".2", linewidth=0.6, zorder=6,
+                       label=label(other))
+            replicas = rows.groupby("replica")[score_col].mean().to_numpy()
+            draw_replica_spread(ax, x, mean, replicas)
+        ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5),
+                  fontsize=font_size * 0.85, frameon=False)
+    # Start with all structures (p = 1) on the left
+    ax.set_xlim(1.05, -0.05)
+
+    ax.set_xticks(means.index)
+    ax.set_xticklabels([f"{p:g}" for p in means.index], fontsize=font_size)
+    ax.set_xlabel("Fraction of available structures p", fontsize=font_size)
+    ax.set_ylabel(score_label(score_col), fontsize=font_size)
+    ax.tick_params(axis="y", labelsize=font_size)
+
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    print(f"Saved missing structure curve to {output_path}")
+    plt.close(fig)
+
+
+def format_depth(depth: float) -> str:
+    """Tick label of an alignment depth, e.g. 50000 -> ``50k``."""
+    for factor, suffix in ((1_000_000, "M"), (1000, "k")):
+        if depth >= factor and depth % factor == 0:
+            return f"{depth // factor:g}{suffix}"
+    return f"{depth:g}"
+
+
+def depth_curve(
+    df: pd.DataFrame,
+    score_col: str = "TC",
+    output_path: str = "depth_curve.pdf",
+    tools: Optional[Sequence[str]] = None,
+    title: Optional[str] = None,
+    font_size: Optional[int] = None,
+    tool_name_map: Optional[dict] = None,
+    logy: bool = False,
+) -> None:
+    """Line plot of a score over the alignment depth (number of aligned
+    sequences, log scale), one curve per tool in its usual color.
+
+    Parameters
+    ----------
+    df:
+        One row per alignment with the columns ``tool``, ``depth``,
+        ``replica`` and ``score_col``.
+    score_col:
+        Score on the y axis, averaged per depth over all rows (families,
+        subsamples and replicas).
+    output_path:
+        File path to save the figure (PDF).
+    tools:
+        Tools to draw, in legend order. Default: all tools in *df*.
+    title:
+        Title for the figure. No title if *None*.
+    font_size:
+        Base font size. Defaults to 10.
+    tool_name_map:
+        Mapping from tool names to legend labels.
+    logy:
+        Logarithmic y axis, e.g. for runtimes.
+    """
+    sns.set_style("whitegrid")
+    font_size = font_size if font_size is not None else 10
+    names = tool_name_map or {}
+    if tools is None:
+        tools = list(dict.fromkeys(df["tool"]))
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    if title is not None:
+        fig.suptitle(title, fontsize=font_size + 2, fontweight="bold")
+    # Shift the error bars of the tools apart a little on the log x axis
+    shifts = 1.04 ** (np.arange(len(tools)) - (len(tools) - 1) / 2)
+    for k, tool in enumerate(tools):
+        rows = df[df["tool"] == tool]
+        means = rows.groupby("depth")[score_col].mean().sort_index()
+        ax.plot(means.index * shifts[k], means.values,
+                color=tool_color(tool),
+                marker=OTHER_TOOL_MARKERS[k % len(OTHER_TOOL_MARKERS)],
+                markersize=7, markeredgecolor=".2", markeredgewidth=0.6,
+                lw=2, zorder=3,
+                label=names.get(tool, tool).replace("\n", " "))
+        per_replica = rows.groupby(["depth", "replica"])[score_col].mean()
+        for depth, values in per_replica.groupby(level="depth"):
+            draw_replica_spread(ax, depth * shifts[k], means[depth],
+                                values.dropna().to_numpy())
+
+    depths = np.sort(df["depth"].unique())
+    ax.set_xscale("log")
+    ax.set_xticks(depths)
+    ax.set_xticklabels([format_depth(d) for d in depths], fontsize=font_size)
+    ax.minorticks_off()
+    ax.set_xlim(depths[0] / 1.4, depths[-1] * 1.4)
+    if logy:
+        ax.set_yscale("log")
+    ax.set_xlabel("Alignment depth (number of sequences)", fontsize=font_size)
+    ax.set_ylabel("Runtime (s)" if score_col == "tool_s"
+                  else score_label(score_col), fontsize=font_size)
+    ax.tick_params(axis="y", labelsize=font_size)
+    ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5),
+              fontsize=font_size * 0.85, frameon=False)
+
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    print(f"Saved depth curve to {output_path}")
     plt.close(fig)

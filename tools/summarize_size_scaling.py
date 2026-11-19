@@ -1,151 +1,159 @@
+"""Summarize a size scaling benchmark per alignment depth.
+
+Averages the scores of every depth (number of aligned sequences) over all
+families, subsamples and replicas of each tool. The samples of the benchmark
+are named <family>_<depth>_<subsample>, e.g. rvp_200000_3. Prints a table
+per tool and optionally plots a score over the depth with one curve per tool.
+
+    python tools/summarize_size_scaling.py --plot --score TC
+"""
+
 import argparse
 import os
-import re
-from typing import Tuple, Optional
-import numpy as np
+import sys
+from pathlib import Path
+
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).parent))
+from plots import depth_curve
+from summarize_missing_struct import read_tool, read_tool_names
 
-argparser = argparse.ArgumentParser(
-    description="Summarize the results of a size scaling experiment."
-)
-argparser.add_argument(
-    '-i', nargs='+', type=str, required=True,
-    help="Path(s) to one or more input data files."
-)
-argparser.add_argument(
-    '-o', '--output', type=str, required=False,
-    help="Optional output file path (only used for single input)."
-)
-argparser.add_argument(
-    '--detailed', action='store_true',
-    help="Show detailed breakdown by family and sequence count."
-)
-
-args = argparser.parse_args()
+SCORE_COLS = ["SP-Score", "Modeler", "TC", "lddt", "lddt_core",
+              "lddt_muscle", "dali_z"]
+RUNTIME_COL = "tool_s"
 
 
-def parse_sample_key(sample: str) -> Tuple[str, int, int]:
-    """
-    Parse the sample key to extract family name, sequence count, and run number.
-    Example: "lyase_1_500_1" -> family="lyase_1", seq_count=500, run=1
-    """
-    # Split by underscore and find the pattern where we have digits followed by more digits
-    parts = sample.split('_')
-
-    # The last part should be the run number
-    run_num = int(parts[-1])
-
-    # The second to last should be the sequence count
-    seq_count = int(parts[-2])
-
-    # Everything before that is the family name
-    family = '_'.join(parts[:-2])
-
-    return family, seq_count, run_num
-
-
-def load_and_process_data(input_file: str) -> pd.DataFrame:
-    """
-    Load the data file and add parsed columns for family, seq_count, and run_num.
-    """
-    # Read the data file
-    df = pd.read_csv(input_file, sep=' ')
-
-    # Parse the sample column
-    parsed = df['sample'].apply(parse_sample_key)
-    df['family'] = parsed.apply(lambda x: x[0])
-    df['seq_count'] = parsed.apply(lambda x: x[1])
-    df['run_num'] = parsed.apply(lambda x: x[2])
-
-    # -1 marks failed alignments
-    if 'tool_s' in df.columns:
-        df['tool_s'] = df['tool_s'].replace(-1, np.nan)
-
+def read_scaling_tool(run: str, tool: str) -> pd.DataFrame:
+    """The results of tool in run with the parsed columns ``family``,
+    ``depth`` and ``subsample`` and the tool name in ``tool``."""
+    df = read_tool(run, tool)
+    if df is None:
+        raise SystemExit(f"No results of {tool} in results/{run}.")
+    parts = df["sample"].str.extract(r"^(.+)_(\d+)_(\d+)$")
+    if parts.isna().any(axis=None):
+        bad = df["sample"][parts.isna().any(axis=1)].iloc[0]
+        raise SystemExit(f"Sample {bad} in {run} is not named "
+                         "<family>_<depth>_<subsample>.")
+    df["family"] = parts[0]
+    df["depth"] = parts[1].astype(int)
+    df["subsample"] = parts[2].astype(int)
+    df["tool"] = tool
+    # -1 marks failed alignments or missing scores
+    for col in SCORE_COLS[:3] + [RUNTIME_COL]:
+        if col in df.columns:
+            df[col] = df[col].mask(df[col] < 0)
     return df
 
 
-def runtime_col(df: pd.DataFrame) -> str:
-    """The tool time without conda startup and file copies if the results
-    have it, otherwise the snakemake job time "s"."""
-    return 'tool_s' if 'tool_s' in df.columns else 's'
+def summary_table(df: pd.DataFrame, cols: list, score: str,
+                  by: list) -> pd.DataFrame:
+    """Means of cols grouped by the columns by, with the number of
+    alignments, of alignments with a value of score and of replicas, and the
+    standard deviation of the per-replica means of score."""
+    groups = df.groupby(by)
+    table = groups[cols].mean()
+    table.insert(0, "n", groups.size())
+    table.insert(1, f"n_{score}", groups[score].count())
+    table.insert(2, "replicas", groups["replica"].nunique())
+    replica_means = df.groupby(by + ["replica"])[score].mean()
+    table[f"{score}_sd"] = replica_means.groupby(level=by).std(ddof=1)
+    return table
 
 
-def summarize_by_seq_count(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Compute means over families and runs for each sequence count.
-    """
-    # Columns to display in output
-    display_cols = ['SP-Score', 'Modeler', 'TC', runtime_col(df)]
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument(
+        "--run", default="learnMSA_scale",
+        help="Benchmark run with samples <family>_<depth>_<subsample>.")
+    parser.add_argument(
+        "--tools", nargs="+", default=["learnMSA", "learnMSA_struct"],
+        help="Tools without their '_replica_N' suffix; replicas are "
+             "averaged.")
+    parser.add_argument(
+        "--score", default="TC", choices=SCORE_COLS + [RUNTIME_COL],
+        help="Score on the y axis of the plot and of the standard deviation "
+             "column of the table.")
+    parser.add_argument(
+        "--detailed", action="store_true",
+        help="Also print the means per family and depth.")
+    parser.add_argument(
+        "--csv", type=str, default=None, metavar="PATH",
+        help="Save the table of all tools as CSV.")
+    parser.add_argument(
+        "--plot", action="store_true",
+        help="Plot --score over the alignment depth, one curve per tool.")
+    parser.add_argument(
+        "--tool_names", type=str, default=None, metavar="PATH",
+        help="File with display names for the legend, as in summarize.py "
+             "--barplot_tool_names (e.g. tools/tool_names.txt).")
+    parser.add_argument(
+        "--title", type=str, default=None, metavar="TITLE",
+        help="Title of the plot (default: none).")
+    parser.add_argument(
+        "--fontsize", type=int, default=None, metavar="SIZE",
+        help="Base font size of the plot.")
+    parser.add_argument(
+        "--logy", action=argparse.BooleanOptionalAction, default=None,
+        help="Logarithmic y axis (default: only for the runtime).")
+    parser.add_argument(
+        "--output", type=str, default=None, metavar="PATH",
+        help="Where to save the plot. A path with an extension (e.g. "
+             "figs/my_plot.pdf) is used as the file name; anything else is "
+             "treated as a directory that receives the default file name. "
+             "Default: plots/.")
+    args = parser.parse_args()
 
-    # Filter to only existing columns
-    cols_to_aggregate = [col for col in display_cols if col in df.columns]
+    df = pd.concat([read_scaling_tool(args.run, tool) for tool in args.tools],
+                   ignore_index=True)
+    cols = [col for col in SCORE_COLS + [RUNTIME_COL] if col in df.columns]
+    if args.score not in df.columns:
+        raise SystemExit(f"No column {args.score} in the results.")
 
-    # Group by sequence count and compute means
-    summary = df.groupby('seq_count')[cols_to_aggregate].mean()
+    failed = df[(df["success"] != 1) | df[["SP-Score", "TC"]].isna().any(
+        axis=1)]
+    if len(failed):
+        print(f"Warning: {len(failed)} alignments failed, e.g. "
+              f"{failed['tool'].iloc[0]} {failed['sample'].iloc[0]}.",
+              file=sys.stderr)
 
-    # Sort by sequence count
-    summary = summary.sort_index()
+    table = summary_table(df, cols, args.score, ["tool", "depth"])
+    for tool in args.tools:
+        sub = table.loc[tool]
+        if sub["n"].nunique() > 1:
+            print(f"Warning: the number of alignments of {tool} differs "
+                  "between the depths.", file=sys.stderr)
+        print(f"\n{tool} by alignment depth "
+              f"({df[df['tool'] == tool]['family'].nunique()} families):")
+        print(sub.to_string(float_format=lambda x: f"{x:.4f}"))
+        if args.detailed:
+            detail = summary_table(df[df["tool"] == tool], cols, args.score,
+                                   ["family", "depth"])
+            print(f"\n{tool} by family and depth:")
+            print(detail.to_string(float_format=lambda x: f"{x:.4f}"))
 
-    return summary
+    if args.csv is not None:
+        os.makedirs(os.path.dirname(args.csv) or ".", exist_ok=True)
+        table.to_csv(args.csv)
+        print(f"\nSaved the table to {args.csv}")
 
-
-def print_summary(
-        df: pd.DataFrame,
-        filename: Optional[str] = None,
-        show_detailed: bool = False
-) -> None:
-    """
-    Print summary statistics.
-
-    Args:
-        df: DataFrame with the data
-        filename: Optional filename to display in header
-        show_detailed: If True, show detailed breakdown by family
-    """
-    if filename:
-        print("\n" + "="*80)
-        print(f"FILE: {filename}")
-
-    print(f"Runtime column: {runtime_col(df)}")
-    print("="*80 + "\n")
-
-    summary = summarize_by_seq_count(df)
-    print(summary)
-
-    if show_detailed:
-        print("\n" + "="*80)
-        print("DETAILED BREAKDOWN BY FAMILY")
-        print("="*80 + "\n")
-
-        # Show breakdown by family and sequence count
-        display_cols = ['SP-Score', 'Modeler', 'TC', runtime_col(df)]
-        cols_to_show = [col for col in display_cols if col in df.columns]
-
-        family_summary = df.groupby(['family', 'seq_count'])[cols_to_show].mean()
-        print(family_summary)
+    if args.plot:
+        name = f"{args.run}_{args.score}.pdf"
+        out = args.output
+        if out is None:
+            output_path = os.path.join("plots", name)
+        elif os.path.splitext(out)[1]:
+            output_path = out
+        else:
+            output_path = os.path.join(out, name)
+        logy = args.logy if args.logy is not None \
+            else args.score == RUNTIME_COL
+        depth_curve(df, score_col=args.score, output_path=output_path,
+                    tools=args.tools, title=args.title,
+                    font_size=args.fontsize,
+                    tool_name_map=read_tool_names(args.tool_names),
+                    logy=logy)
 
 
-if __name__ == '__main__':
-    # Process each input file
-    for i, input_file in enumerate(args.i):
-        # Load and process the data
-        df = load_and_process_data(input_file)
-
-        # Print summary (show filename if multiple files)
-        filename = input_file if len(args.i) > 1 else None
-        print_summary(df, filename=filename, show_detailed=args.detailed)
-
-        # Save to output file if specified (only for single input)
-        if args.output and len(args.i) == 1:
-            summary = summarize_by_seq_count(df)
-            summary.to_csv(args.output)
-            print(f"\nSummary saved to: {args.output}")
-        elif args.output and len(args.i) > 1:
-            # For multiple files, append index to output filename
-            base, ext = os.path.splitext(args.output)
-            output_file = f"{base}_{i}{ext}"
-            summary = summarize_by_seq_count(df)
-            summary.to_csv(output_file)
-            print(f"\nSummary saved to: {output_file}")
-
+if __name__ == "__main__":
+    main()

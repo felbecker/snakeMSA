@@ -1,0 +1,6 @@
+learnMSA_struct_reuse050 learnMSA 50% id.
+learnMSA_struct_reuse070 learnMSA 70% id.
+learnMSA_struct_reuse080 learnMSA 80% id.
+learnMSA_struct_reuse090 learnMSA 90% id.
+learnMSA_struct_reuse095 learnMSA 95% id.
+learnMSA_struct learnMSA 100% id.
