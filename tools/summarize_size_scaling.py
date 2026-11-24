@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from plots import depth_curve
 from summarize_missing_struct import read_tool, read_tool_names
 
-SCORE_COLS = ["SP-Score", "Modeler", "TC", "lddt", "lddt_core",
-              "lddt_muscle", "dali_z"]
+SCORE_COLS = ["SP-Score", "Modeler", "TC", "lddt", "lddt_muscle",
+              "lddt_ref", "lddt_core", "dali_z"]
 RUNTIME_COL = "tool_s"
 
 

@@ -14,10 +14,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 from data_stats import compute_stats
 
 
-STRUCT_SCORE_COLS = ["lddt", "lddt_core", "lddt_muscle", "dali_z"]
+# lddt_core and dali_z are only in results written before lddt_ref was added
+STRUCT_SCORE_COLS = ["lddt", "lddt_muscle", "lddt_ref", "lddt_core", "dali_z"]
 
 #: Structural scores reported unless --all-struct-scores is given.
-DEFAULT_STRUCT_SCORE_COLS = ["lddt_muscle"]
+DEFAULT_STRUCT_SCORE_COLS = ["lddt_muscle", "lddt_ref"]
 
 #: Peak GPU memory in MiB, recorded by the align rule. -1 means "not
 #: monitored" (CPU-only tool, or a run made before GPU tracking existed).
@@ -84,8 +85,9 @@ argparser.add_argument(
 )
 argparser.add_argument(
     '--all-struct-scores', action='store_true', dest='all_struct_scores',
-    help="Report all structural scores (lddt, lddt_core, lddt_muscle, dali_z) "
-         "instead of only lddt_muscle."
+    help="Report all structural scores (lddt, lddt_muscle, lddt_ref; older "
+         "results also lddt_core, dali_z) "
+         "instead of only lddt_muscle and lddt_ref."
 )
 argparser.add_argument(
     '--barplots', action='store_true',
@@ -94,7 +96,7 @@ argparser.add_argument(
 argparser.add_argument(
     '--barplot_lddt', nargs='*', default=None, metavar='LDDT_TYPE',
     help="Create a bar plot for structural scores. Optionally specify one or "
-         "two scores (lddt, lddt_core, lddt_muscle, dali_z); default: "
+         "two scores (lddt, lddt_muscle, lddt_ref, lddt_core, dali_z); default: "
          "lddt_muscle lddt. With two scores, the first is drawn as faded bars "
          "and the second as solid bars on top, so the first should be the "
          "larger one."
@@ -302,7 +304,7 @@ def delete_failed(failed: pd.DataFrame, dry: bool = False) -> None:
 
 
 def wanted_struct_score_cols() -> List[str]:
-    """The structural scores the user asked for: only lddt_muscle by default."""
+    """The structural scores the user asked for: lddt_muscle and lddt_ref by default."""
     return STRUCT_SCORE_COLS if args.all_struct_scores else DEFAULT_STRUCT_SCORE_COLS
 
 

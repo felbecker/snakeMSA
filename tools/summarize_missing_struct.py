@@ -25,7 +25,13 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent))
 from plots import missing_struct_curve
 
-SCORE_COLS = ["lddt", "lddt_core", "lddt_muscle", "dali_z"]
+# lddt_core and dali_z are only in results written before lddt_ref was added
+SCORE_COLS = ["lddt", "lddt_muscle", "lddt_ref", "lddt_core", "dali_z"]
+
+
+def present(frame):
+    """The columns of SCORE_COLS that frame has."""
+    return [col for col in SCORE_COLS if col in frame.columns]
 
 
 def read_out(path: str) -> pd.DataFrame:
@@ -40,7 +46,7 @@ def read_out(path: str) -> pd.DataFrame:
     ).replace("\t", " ")
     df = pd.read_csv(io.StringIO(content), index_col=False, sep=" ")
     # -1 means "not available"
-    df[SCORE_COLS] = df[SCORE_COLS].replace(-1, np.nan)
+    df[present(df)] = df[present(df)].replace(-1, np.nan)
     return df
 
 
@@ -173,13 +179,13 @@ def main() -> None:
         if frame is None:
             continue
         failed = frame[(frame["success"] != 1)
-                       | frame[SCORE_COLS].isna().any(axis=1)]
+                       | frame[present(frame)].isna().any(axis=1)]
         if len(failed):
             print(f"Warning: {len(failed)} alignments failed or lack scores, "
                   f"e.g. {failed['sample'].iloc[0]}.", file=sys.stderr)
 
     groups = df.groupby("p")
-    table = groups[SCORE_COLS].mean()
+    table = groups[present(df)].mean()
     table.insert(0, "n", groups.size())
     table.insert(1, "replicas", groups["replica"].nunique())
     # Error of the replicas as in the plot: the standard deviation of the
@@ -195,7 +201,7 @@ def main() -> None:
 
     if others is not None:
         groups = others.groupby("tool", sort=False)
-        table = groups[SCORE_COLS].mean()
+        table = groups[present(others)].mean()
         table.insert(0, "p", groups["p"].first())
         table.insert(1, "n", groups.size())
         table.insert(2, "replicas", groups["replica"].nunique())

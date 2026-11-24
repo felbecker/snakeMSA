@@ -62,7 +62,6 @@ if CLEANUP and not RESCORE:
             pdb=resolve_pdb_path,
             ref_pdb=resolve_ref_pdb_path,
             ref=resolve_ref_path,
-            lddt_muscle_only=bool(config.get("lddt_muscle_only", False)),
             gpu_bench=(
                 "outputs/"+config["name"]+"/{tool}/benchmarks/{sample}.gpu"
             ),
