@@ -6,4 +6,4 @@
 	url = https://github.com/felbecker/3DUtil
 [submodule "pylddt"]
 	path = pylddt
-	url = https://github.com/rcedgar/pylddt
+	url = https://github.com/felbecker/pylddt
