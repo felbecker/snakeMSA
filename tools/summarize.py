@@ -14,11 +14,18 @@ sys.path.insert(0, str(Path(__file__).parent))
 from data_stats import compute_stats
 
 
-# lddt_core and dali_z are only in results written before lddt_ref was added
-STRUCT_SCORE_COLS = ["lddt", "lddt_muscle", "lddt_ref", "lddt_core", "dali_z"]
+# Results written now have lddt_muscle, lddt_muscle_L and their pLDDT-masked
+# *_conf versions, the alignment coverage and the default foldmason LDDT
+# lddt_fm (called lddt in older results). lddt_ref is only in older results,
+# lddt_core and dali_z in even older ones.
+STRUCT_SCORE_COLS = ["lddt_muscle", "lddt_muscle_L", "lddt_muscle_conf",
+                     "lddt_muscle_L_conf", "coverage", "lddt_fm", "lddt",
+                     "lddt_ref", "lddt_core",
+                     "dali_z"]
 
 #: Structural scores reported unless --all-struct-scores is given.
-DEFAULT_STRUCT_SCORE_COLS = ["lddt_muscle", "lddt_ref"]
+DEFAULT_STRUCT_SCORE_COLS = ["lddt_muscle", "lddt_muscle_L", "lddt_muscle_conf",
+                             "lddt_muscle_L_conf", "coverage", "lddt_fm"]
 
 #: Peak GPU memory in MiB, recorded by the align rule. -1 means "not
 #: monitored" (CPU-only tool, or a run made before GPU tracking existed).
@@ -85,21 +92,23 @@ argparser.add_argument(
 )
 argparser.add_argument(
     '--all-struct-scores', action='store_true', dest='all_struct_scores',
-    help="Report all structural scores (lddt, lddt_muscle, lddt_ref; older "
-         "results also lddt_core, dali_z) "
-         "instead of only lddt_muscle and lddt_ref."
+    help="Report all structural scores (lddt_muscle, lddt_muscle_L, "
+         "lddt_muscle_conf, lddt_muscle_L_conf, coverage, lddt_fm; older "
+         "results also lddt, lddt_ref, lddt_core, dali_z) instead of only "
+         "the current ones."
 )
 argparser.add_argument(
     '--barplots', action='store_true',
     help="Create a bar plot (SP-Score, TC, runtime) for each run."
 )
 argparser.add_argument(
-    '--barplot_lddt', nargs='*', default=None, metavar='LDDT_TYPE',
-    help="Create a bar plot for structural scores. Optionally specify one or "
-         "two scores (lddt, lddt_muscle, lddt_ref, lddt_core, dali_z); default: "
-         "lddt_muscle lddt. With two scores, the first is drawn as faded bars "
-         "and the second as solid bars on top, so the first should be the "
-         "larger one."
+    '--scatterplot_lddt', nargs='*', default=None, metavar='SCORE',
+    help="Create a scatter plot of two structural scores (x, then y; any of "
+         "lddt_muscle, lddt_muscle_L, lddt_muscle_conf, lddt_muscle_L_conf, "
+         "coverage, lddt_fm; older results also lddt, lddt_ref, "
+         "lddt_core, dali_z) with one point per "
+         "tool, in the tool's usual color and with its own marker shape. "
+         "Default: lddt_muscle lddt_muscle_L."
 )
 argparser.add_argument(
     '--average-replicas', action='store_true', dest='average_replicas',
@@ -127,16 +136,16 @@ argparser.add_argument(
 )
 argparser.add_argument(
     '--runtime_line', action='store_true',
-    help="In bar plots, show the runtime as red dots connected by a red "
+    help="In the SP/TC bar plot, show the runtime as red dots connected by a red "
          "line on a second y axis (right hand side) instead of labels."
 )
 argparser.add_argument(
     '--barplot_output', type=str, default=None, metavar='PATH',
-    help="Where to save bar plots. A path with an extension (e.g. "
+    help="Where to save plots. A path with an extension (e.g. "
          "figs/my_plot.pdf) is used as the file name; anything else is "
          "treated as a directory that receives the default file names. "
-         "If both --barplots and --barplot_lddt are given, the LDDT plot "
-         "gets '_<lddt_type>' appended to the file name. Default: plots/."
+         "If both --barplots and --scatterplot_lddt are given, the scatter "
+         "plot gets '_<x>_<y>' appended to the file name. Default: plots/."
 )
 
 args = argparser.parse_args()
@@ -304,7 +313,7 @@ def delete_failed(failed: pd.DataFrame, dry: bool = False) -> None:
 
 
 def wanted_struct_score_cols() -> List[str]:
-    """The structural scores the user asked for: lddt_muscle and lddt_ref by default."""
+    """The structural scores the user asked for: the current ones by default."""
     return STRUCT_SCORE_COLS if args.all_struct_scores else DEFAULT_STRUCT_SCORE_COLS
 
 
@@ -633,8 +642,8 @@ if __name__ == '__main__':
                 df.groupby(["tool"])[_cols].mean()
             )
 
-    if args.barplots or args.barplot_lddt is not None:
-        from plots import barplot, barplot_lddt
+    if args.barplots or args.scatterplot_lddt is not None:
+        from plots import barplot, scatterplot_lddt
         tool_order = args.tools if args.tools else None
         if len(run_names) == 1:
             name = run_names[0]
@@ -655,7 +664,7 @@ if __name__ == '__main__':
                         tool_name_map[_parts[0]] = _parts[1].replace("\\n", "\n")
         plot_title = args.barplot_title if args.barplot_title else name
         plot_fontsize = args.barplot_fontsize
-        both_plots = bool(args.barplots and args.barplot_lddt is not None)
+        both_plots = bool(args.barplots and args.scatterplot_lddt is not None)
 
         def plot_path(default_name: str, suffix: str = "") -> str:
             """Output path of a plot, honoring --barplot_output."""
@@ -673,17 +682,22 @@ if __name__ == '__main__':
                     title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map,
                     time_col=time_col, runtime_line=args.runtime_line,
                     sort_by_score=not args.fixed_order)
-        if args.barplot_lddt is not None:
-            lddt_cols = args.barplot_lddt or ["lddt_muscle", "lddt"]
-            if len(lddt_cols) > 2:
-                argparser.error("--barplot_lddt takes at most two scores.")
-            lddt_tag = "_".join(lddt_cols)
-            barplot_lddt(df, run_name=name, tools=tool_order,
-                         lddt_cols=lddt_cols,
-                         output_path=plot_path(
-                             f"{name}_barplot_{lddt_tag}.pdf",
-                             f"_{lddt_tag}" if both_plots else ""),
-                         title=plot_title, font_size=plot_fontsize, tool_name_map=tool_name_map,
-                         time_col=time_col,
-                         runtime_line=args.runtime_line,
-                         sort_by_score=not args.fixed_order)
+        if args.scatterplot_lddt is not None:
+            score_cols = (args.scatterplot_lddt
+                          or list(DEFAULT_STRUCT_SCORE_COLS))
+            if len(score_cols) != 2:
+                argparser.error("--scatterplot_lddt takes exactly two scores.")
+            missing = [c for c in score_cols if c not in df.columns]
+            if missing:
+                argparser.error(
+                    f"--scatterplot_lddt: no column {', '.join(missing)} "
+                    "in the results.")
+            score_tag = "_".join(score_cols)
+            scatterplot_lddt(df, run_name=name, tools=tool_order,
+                             score_cols=score_cols,
+                             output_path=plot_path(
+                                 f"{name}_scatter_{score_tag}.pdf",
+                                 f"_{score_tag}" if both_plots else ""),
+                             title=plot_title, font_size=plot_fontsize,
+                             tool_name_map=tool_name_map,
+                             sort_by_score=not args.fixed_order)

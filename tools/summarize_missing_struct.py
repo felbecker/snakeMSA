@@ -25,8 +25,11 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent))
 from plots import missing_struct_curve
 
-# lddt_core and dali_z are only in results written before lddt_ref was added
-SCORE_COLS = ["lddt", "lddt_muscle", "lddt_ref", "lddt_core", "dali_z"]
+# lddt (now lddt_fm) and lddt_ref are only in results written before
+# lddt_muscle_L was added, lddt_core and dali_z in even older ones
+SCORE_COLS = ["lddt_muscle", "lddt_muscle_L", "lddt_muscle_conf",
+              "lddt_muscle_L_conf", "coverage", "lddt_fm", "lddt", "lddt_ref",
+              "lddt_core", "dali_z"]
 
 
 def present(frame):

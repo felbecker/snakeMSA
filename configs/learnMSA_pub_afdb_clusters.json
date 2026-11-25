@@ -11,26 +11,6 @@
           "--seed 0"
         ]
       },
-      "learnMSA_replica_2" : {
-        "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
-        "params": [
-          "-i {input}",
-          "-o {output}",
-          "--work_dir {workdir}",
-          "--save_model",
-          "--seed 1"
-        ]
-      },
-      "learnMSA_replica_3" : {
-        "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
-        "params": [
-          "-i {input}",
-          "-o {output}",
-          "--work_dir {workdir}",
-          "--save_model",
-          "--seed 2"
-        ]
-      },
       "learnMSA_struct_replica_1" : {
         "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
         "params": [
@@ -38,38 +18,6 @@
           "-o {output}",
           "--work_dir {workdir}",
           "--save_model",
-          "--seed 0"
-        ]
-      },
-      "learnMSA_struct_replica_2" : {
-        "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
-        "params": [
-          "--struct {pdb}",
-          "-o {output}",
-          "--work_dir {workdir}",
-          "--save_model",
-          "--seed 1"
-        ]
-      },
-      "learnMSA_struct_replica_3" : {
-        "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
-        "params": [
-          "--struct {pdb}",
-          "-o {output}",
-          "--work_dir {workdir}",
-          "--save_model",
-          "--seed 2"
-        ]
-      },
-
-      "learnMSA_struct_noaa_replica_1" : {
-        "command": "conda run --live-stream -n learnMSA python ../learnMSA/learnMSA.py",
-        "params": [
-          "--struct {pdb}",
-          "-o {output}",
-          "--work_dir {workdir}",
-          "--save_model",
-          "--no_aa",
           "--seed 0"
         ]
       }
@@ -81,6 +29,5 @@
     "align_mem": 32000,
     "score_threads": 6,
     "score_mem": 3000,
-    "align_runtime": "4h",
-    "lddt_muscle_only": false
+    "align_runtime": "4h"
 }

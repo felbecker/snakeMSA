@@ -34,8 +34,9 @@ BENCHMARK_COLS = [
 ]
 
 #: Number of score columns after "<sample> <success>" (7 FastSP scores,
-#: lddt, lddt_core, lddt_muscle, dali_z), see score_sample in rules/score_msa.
-NUM_SCORES = 11
+#: lddt_muscle, lddt_muscle_L, lddt_muscle_conf, lddt_muscle_L_conf, coverage,
+#: lddt_fm), see STRUCT_COLUMNS in rules/score_msa.
+NUM_SCORES = 13
 
 ERROR_RE = re.compile(r"^Error in rule (\S+):$")
 SLURM_RE = re.compile(

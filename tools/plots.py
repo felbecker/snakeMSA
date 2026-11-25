@@ -1,4 +1,4 @@
-"""Bar plots for benchmark results of a single run with multiple tools."""
+"""Plots for benchmark results of runs with multiple tools."""
 
 import os
 import re
@@ -305,150 +305,105 @@ def score_label(col: str) -> str:
     return " ".join(words)
 
 
-def barplot_lddt(
+#: Marker shapes of the tools drawn as single points next to the curve.
+OTHER_TOOL_MARKERS = ["s", "^", "D", "v", "P", "X", "*", "<", ">"]
+
+#: Marker shapes of the tools in the scatter plot, one per tool.
+SCATTER_MARKERS = ["o"] + OTHER_TOOL_MARKERS + ["h", "p"]
+
+
+def scatterplot_lddt(
     df: pd.DataFrame,
     run_name: str,
     tools: Optional[List[str]] = None,
-    lddt_cols: Sequence[str] = ("lddt_muscle", "lddt"),
+    score_cols: Sequence[str] = ("lddt_muscle", "lddt_muscle_L"),
     output_path: Optional[str] = None,
     title: Optional[str] = None,
     font_size: Optional[int] = None,
     tool_name_map: Optional[dict] = None,
-    time_col: str = "s",
-    runtime_line: bool = False,
     sort_by_score: bool = True,
 ) -> None:
-    """Create a bar plot for a single run showing LDDT bars, with
-    mean runtime as a label over each bar.
-
-    With two scores, the first (assumed to be the larger one) is drawn as
-    faded bars and the second as solid bars on top, like SP-Score and TC in
-    ``barplot``.
+    """Scatter plot of two structural scores for a single run: one point per
+    tool at the mean of both scores over all families, in the usual color
+    of the tool and with its own marker shape.
 
     Parameters
     ----------
     df:
         Merged dataframe as returned by ``make_merged_df`` from summarize.py.
-        With a ``replica`` column (``--average-replicas``), error bars show
-        the standard deviation of the per-replica means over all families.
+        With ``--average-replicas``, the replicas of a tool are averaged
+        into its single point.
     run_name:
         Name used for the default output filename.
     tools:
         Ordered list of tool names to include. If *None* all tools in *df* are
-        used, sorted by mean of the first score descending.
-    lddt_cols:
-        One or two score columns to plot. The first one is assumed to be
-        larger than the second.
+        used, sorted by mean of the second score descending.
+    score_cols:
+        The two score columns on the x and y axis.
     output_path:
         File path to save the figure (PDF). If *None* the figure is saved as
-        ``<run_name>_barplot_<lddt_cols joined by _>.pdf`` in the current
-        working directory.
+        ``<run_name>_scatter_<x>_<y>.pdf`` in the current working directory.
     title:
         Title for the figure. Defaults to *run_name*.
     font_size:
         Base font size. Defaults to 10.
     tool_name_map:
-        Mapping from dataframe tool names to display names shown on the plot.
-    time_col:
-        Runtime column for the labels, e.g. "s", "tool_s" or "runtime".
-    runtime_line:
-        Instead of runtime labels, plot the runtimes as red dots connected
-        by a red line on a second y axis on the right hand side.
+        Mapping from dataframe tool names to display names in the legend.
     sort_by_score:
-        Sort the tools by score. If *False*, plot them in the order of
+        Order the legend by the second score. If *False*, use the order of
         *tools* (all tools in *df* in order of appearance if *None*).
     """
     sns.set_style("whitegrid")
 
-    lddt_cols = [lddt_cols] if isinstance(lddt_cols, str) else list(lddt_cols)
-    if not 1 <= len(lddt_cols) <= 2:
-        raise ValueError("lddt_cols must contain one or two score columns.")
-    top_col, bottom_col = lddt_cols[0], lddt_cols[-1]
+    score_cols = list(score_cols)
+    if len(score_cols) != 2:
+        raise ValueError("score_cols must contain exactly two score columns.")
+    x_col, y_col = score_cols
 
     available = df["tool"].unique().tolist()
-
     if tools is None:
         candidates = available
     else:
         candidates = [t for t in tools if t in available]
 
-    order = sorted_tools(df, candidates, top_col, sort_by_score)
-
+    order = sorted_tools(df, candidates, y_col, sort_by_score)
     if not order:
         raise ValueError("No matching tools found in the dataframe.")
 
-    data = df[df["tool"].isin(order)].copy()
-    means = data.groupby("tool")[lddt_cols + [time_col]].mean()
+    data = df[df["tool"].isin(order)]
+    means = data.groupby("tool")[score_cols].mean()
+    names = tool_name_map or {}
 
-    # Apply display-name mapping
-    if tool_name_map:
-        display_order = [tool_name_map.get(t, t) for t in order]
-        data["tool"] = data["tool"].map(lambda t: tool_name_map.get(t, t))
-        means.index = [tool_name_map.get(t, t) for t in means.index]
-    else:
-        display_order = order
-
-    n_tools = len(display_order)
     font_size = font_size if font_size is not None else 10
-    fig, ax = plt.subplots(figsize=(max(5, n_tools * 1.2), 4.5))
-    fig.suptitle(title if title is not None else run_name, fontsize=font_size + 2, fontweight="bold")
+    fig, ax = plt.subplots(figsize=(7, 5))
+    fig.suptitle(title if title is not None else run_name,
+                 fontsize=font_size + 2, fontweight="bold")
 
-    color_light, color_full = tool_palettes(order, tool_name_map)
-
-    two_scores = len(lddt_cols) == 2
-
-    # First (larger) score; faded if a second one is drawn on top
-    sns.barplot(
-        data=data, x="tool", y=top_col, hue="tool", order=display_order,
-        errorbar=None,
-        linewidth=1, edgecolor=".6",
-        palette=color_light if two_scores else color_full, ax=ax,
-    )
-
-    # Second (smaller) score, solid, overlaid
-    if two_scores:
-        sns.barplot(
-            data=data, x="tool", y=bottom_col, hue="tool", order=display_order,
-            errorbar=None,
-            palette=color_full, ax=ax,
+    for k, tool in enumerate(order):
+        x, y = means.loc[tool, x_col], means.loc[tool, y_col]
+        ax.scatter(
+            x, y, s=80, color=tool_color(tool),
+            marker=SCATTER_MARKERS[k % len(SCATTER_MARKERS)],
+            edgecolor=".2", linewidth=0.6, zorder=5,
+            label=names.get(tool, tool).replace("\n", " "),
         )
 
-    for col in dict.fromkeys(lddt_cols):
-        draw_replica_errors(ax, data, col, display_order)
-
-    # Runtime labels centred on each bar
-    y_min = means[bottom_col].min()
-    y_mid = means[top_col].max()
-    label_y = y_min + (y_mid - y_min) / 2
-    draw_runtime(ax, means[time_col], display_order, label_y, font_size,
-                 runtime_line)
-
-    ax.set_xlabel("")
-    if two_scores:
-        ylabel = (f"{score_label(top_col)} (fade) / "
-                  f"{score_label(bottom_col)} (solid)")
-    else:
-        ylabel = score_label(top_col)
-    ax.set_ylabel(ylabel, fontsize=font_size)
-    ax.set_ylim(bottom=max(0, y_min - 0.05))
-    for item in ax.get_xticklabels():
-        item.set_rotation(20)
-        item.set_size(font_size)
-    ax.legend_ and ax.legend_.remove()
+    ax.set_xlabel(score_label(x_col), fontsize=font_size)
+    ax.set_ylabel(score_label(y_col), fontsize=font_size)
+    ax.tick_params(axis="both", labelsize=font_size)
+    ax.margins(0.1)
+    ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5),
+              fontsize=font_size * 0.85, frameon=False)
 
     plt.tight_layout()
 
     if output_path is None:
-        output_path = f"{run_name}_barplot_{'_'.join(lddt_cols)}.pdf"
+        output_path = f"{run_name}_scatter_{x_col}_{y_col}.pdf"
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    print(f"Saved LDDT bar plot to {output_path}")
+    print(f"Saved LDDT scatter plot to {output_path}")
     plt.close(fig)
-
-
-#: Marker shapes of the tools drawn as single points next to the curve.
-OTHER_TOOL_MARKERS = ["s", "^", "D", "v", "P", "X", "*", "<", ">"]
 
 
 def draw_replica_spread(

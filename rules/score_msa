@@ -3,6 +3,30 @@
 GPU_MEM_COLUMN = "max_gpu_mem"
 TOOL_TIME_COLUMN = "tool_s"
 
+#: Scores of pylddt/src/lddt_mu_par.py, in order: column name -> summary line.
+#:   lddt_muscle         mean pair LDDT over the aligned columns (precision-like)
+#:   lddt_muscle_L       the same column sum divided by the length of the
+#:                       shorter sequence, so unaligned residues count as 0
+#:   *_conf              both, scored only on residues with AlphaFold
+#:                       pLDDT >= MIN_PLDDT (structures that are not AlphaFold
+#:                       models count as fully confident)
+#:   coverage            mean over pairs of aligned columns / length of the
+#:                       shorter sequence (lddt_muscle_L = coverage *
+#:                       lddt_muscle per pair)
+LDDT_COLUMNS = {
+    "lddt_muscle": "LDDT_rce_mean",
+    "lddt_muscle_L": "LDDT_rce_L_mean",
+    "lddt_muscle_conf": "LDDT_rce_conf_mean",
+    "lddt_muscle_L_conf": "LDDT_rce_L_conf_mean",
+    "coverage": "COV_mean",
+}
+#: foldmason msa2lddt with its defaults ("lddt" in older results): the sum of
+#: the column scores divided by the number of alignment columns.
+FOLDMASON_COLUMN = "lddt_fm"
+#: Structure score columns of the score files, in order.
+STRUCT_COLUMNS = list(LDDT_COLUMNS) + [FOLDMASON_COLUMN]
+MIN_PLDDT = config.get("min_plddt", 70)
+
 
 def lookup_coverage(lookup_path, msa_path):
     """Find MSA headers that have no entry in a foldmason database lookup.
@@ -242,13 +266,14 @@ def log_warning(log, message):
         print(warning, file=err_file)
 
 
-def run_pylddt(script, args, struct_msa, pdbfiles_txt, threads, log,
+def run_pylddt(script, args, names, struct_msa, pdbfiles_txt, threads, log,
                sample_name):
-    """Score struct_msa with pylddt/src/<script>, or "-1" on failure.
+    """Score struct_msa with pylddt/src/<script>.
 
-    The pylddt scorers print "<name>\\t<score>\\t<msa>" as their last line.
-    A failure is logged rather than raised, so one scorer failing does not
-    blank the other scores of the sample.
+    The pylddt scorers print summary lines "<name>\\t<score>\\t<msa>". Returns
+    the score of each of names, in order, with "-1" for a name that is
+    missing. A failure is logged rather than raised and gives "-1" for every
+    name, so the other scores of the sample are kept.
     """
     try:
         output = shell(
@@ -259,11 +284,82 @@ def run_pylddt(script, args, struct_msa, pdbfiles_txt, threads, log,
             + " 2>> {log.stderr}",
             read=True
         )
-        return output.strip().splitlines()[-1].split("\t")[1]
+        found = {}
+        for line in output.splitlines():
+            fields = line.split("\t")
+            if len(fields) > 1:
+                found[fields[0]] = fields[1]
     except Exception as error:
         log_warning(
             log, f"{script} unavailable for {sample_name}, recording -1: "
             f"{type(error).__name__}: {error}"
+        )
+        found = {}
+    missing = [name for name in names if name not in found]
+    if missing and found:
+        log_warning(
+            log, f"{script} printed no {', '.join(missing)} for "
+            f"{sample_name}, recording -1"
+        )
+    return [found.get(name, "-1") for name in names]
+
+
+def run_foldmason(struct_dir, struct_msa, workdir, threads, log,
+                  sample_name):
+    """Default foldmason LDDT of struct_msa against the structures in
+    struct_dir, or "-1" on failure.
+
+    foldmason (msa2lddt in particular) can segfault on certain inputs due to
+    bugs in the upstream binary; that must not abort the whole run. The
+    reason always goes to the log: a systematic failure here turns the whole
+    lddt_fm column into -1, which is easy to mistake for "not requested" if
+    nothing says otherwise.
+    """
+    db = workdir + "foldmason_db"
+    try:
+        shell(
+            "conda run -n foldmason foldmason createdb {struct_dir} {db}"
+            + " --threads {threads}"
+            + " >> {log.stdout} 2>> {log.stderr}"
+        )
+        # Catch a name mismatch between the aligner and the database before
+        # msa2lddt turns it into a bare SIZE_MAX id (see lookup_coverage).
+        n_missing, n_total, examples = lookup_coverage(
+            db + ".lookup", struct_msa
+        )
+        if n_missing:
+            raise RuntimeError(
+                f"{n_missing}/{n_total} MSA headers absent from "
+                f"foldmason_db.lookup (e.g. {examples}) -- the "
+                "aligner and foldmason disagree on sequence names"
+            )
+        # Catch a residue-count mismatch before msa2lddt turns it into an
+        # out-of-bounds read (see chain_length_coverage).
+        n_bad, n_rows, bad_examples = chain_length_coverage(db, struct_msa)
+        if n_bad:
+            raise RuntimeError(
+                f"{n_bad}/{n_rows} MSA rows disagree with the "
+                f"foldmason database on residue count "
+                f"(e.g. {bad_examples}) -- msa2lddt would read "
+                "past the end of the C-alpha entries"
+            )
+        lddt_output = shell(
+            "conda run -n foldmason foldmason msa2lddt {db} {struct_msa}"
+            + " --threads {threads}"
+            + " 2>> {log.stderr}",
+            read=True
+        )
+        lddt_match = next((
+            line for line in lddt_output.splitlines()
+            if line.startswith("Average MSA LDDT:")
+        ), None)
+        if lddt_match is None:
+            raise RuntimeError("msa2lddt printed no \"Average MSA LDDT:\"")
+        return lddt_match.split(":")[1].strip()
+    except Exception as error:
+        log_warning(
+            log, f"foldmason LDDT unavailable for {sample_name}, "
+            f"recording -1: {type(error).__name__}: {error}"
         )
         return "-1"
 
@@ -309,8 +405,9 @@ def score_projection(input, output, params, log, threads, wildcards):
                 line.split()[1] for line in fastsp_output.strip().split('\n')
             ]
 
-        # compute lddt scores using foldmason and pylddt, against all
-        # structures or, with ref_pdb, against the reference subset only
+        # structure scores (see STRUCT_COLUMNS) from pylddt and foldmason,
+        # against all structures or, with ref_pdb, against the reference
+        # subset only
         struct_dir = params.ref_pdb or params.pdb
         struct_msa = input.proj
         if params.ref_pdb and os.path.exists(struct_dir):
@@ -329,92 +426,38 @@ def score_projection(input, output, params, log, threads, wildcards):
                 )
                 struct_dir = ""
         if struct_dir == "" or not os.path.exists(struct_dir):
-            lddt = "-1"
-            lddt_muscle = "-1"
-            lddt_ref = "-1"
+            struct_scores = ["-1"] * len(STRUCT_COLUMNS)
         else:
             os.makedirs(params.workdir, exist_ok=True)
-            # foldmason (msa2lddt in particular) can segfault on certain
-            # inputs due to bugs in the upstream binary; don't let that
-            # abort the whole run, just record -1 for this sample.
-            # The reason always goes to the log: a systematic failure
-            # here turns the whole lddt column into -1, which is easy
-            # to mistake for "not requested" if nothing says otherwise.
-            try:
-                shell(
-                    "conda run -n foldmason foldmason createdb {struct_dir} {params.workdir}foldmason_db"
-                    + " --threads {threads}"
-                    + " >> {log.stdout} 2>> {log.stderr}"
-                )
-                # Catch a name mismatch between the aligner and the
-                # database before msa2lddt turns it into a bare
-                # SIZE_MAX id (see lookup_coverage).
-                n_missing, n_total, examples = lookup_coverage(
-                    params.workdir + "foldmason_db.lookup", struct_msa
-                )
-                if n_missing:
-                    raise RuntimeError(
-                        f"{n_missing}/{n_total} MSA headers absent from "
-                        f"foldmason_db.lookup (e.g. {examples}) -- the "
-                        "aligner and foldmason disagree on sequence names"
-                    )
-                # Catch a residue-count mismatch before msa2lddt
-                # turns it into an out-of-bounds read (see
-                # chain_length_coverage).
-                n_bad, n_rows, bad_examples = chain_length_coverage(
-                    params.workdir + "foldmason_db", struct_msa
-                )
-                if n_bad:
-                    raise RuntimeError(
-                        f"{n_bad}/{n_rows} MSA rows disagree with the "
-                        f"foldmason database on residue count "
-                        f"(e.g. {bad_examples}) -- msa2lddt would read "
-                        "past the end of the C-alpha entries"
-                    )
-                lddt_output = shell(
-                    "conda run -n foldmason foldmason msa2lddt {params.workdir}foldmason_db {struct_msa}"
-                    + " --threads {threads}"
-                    + " 2>> {log.stderr}",
-                    read=True
-                )
-                lddt_match = next((
-                    line for line in lddt_output.splitlines()
-                    if line.startswith("Average MSA LDDT:")
-                ), None)
-                lddt = lddt_match.split(":")[1].strip() if lddt_match else "-1"
-            except Exception as foldmason_error:
-                log_warning(
-                    log, f"foldmason LDDT unavailable for {sample_name}, "
-                    f"recording -1: {type(foldmason_error).__name__}: "
-                    f"{foldmason_error}"
-                )
-                lddt = "-1"
-            # pylddt muscle LDDT (precision-like) and reference LDDT
-            # (recall-like)
             pdbfiles_txt = params.workdir + "/pdbfiles.txt"
             with open(pdbfiles_txt, "w") as pf:
                 import glob
                 for pdb_file in glob.glob(struct_dir + "/*"):
                     pf.write(pdb_file + "\n")
-            lddt_muscle = run_pylddt(
-                "lddt_mu_par.py", "--symmetry both", struct_msa,
+            # see LDDT_COLUMNS; other LDDT variants (lddt_ref_par.py,
+            # lddt_foldmason_par.py, ...) are in pylddt/src
+            lddt_scores = run_pylddt(
+                "lddt_mu_par.py",
+                "--symmetry both --lengthnorm --coverage"
+                f" --min_plddt {MIN_PLDDT}",
+                list(LDDT_COLUMNS.values()), struct_msa,
                 pdbfiles_txt, threads, log, sample_name
             )
-            lddt_ref = run_pylddt(
-                "lddt_ref_par.py", "", struct_msa,
-                pdbfiles_txt, threads, log, sample_name
+            lddt_fm = run_foldmason(
+                struct_dir, struct_msa, params.workdir, threads, log,
+                sample_name
             )
+            struct_scores = lddt_scores + [lddt_fm]
 
     else:
         # the MSA failed
         success_flag = 0
         values = ['0'] * 7
-        lddt = "0"
-        lddt_muscle = "0"
-        lddt_ref = "0"
+        struct_scores = ["0"] * len(STRUCT_COLUMNS)
 
     with open(output.score, 'w') as f:
-        f.write(f"{sample_name} {success_flag} {' '.join(values)} {lddt} {lddt_muscle} {lddt_ref}")
+        f.write(" ".join([sample_name, str(success_flag)] + values
+                         + struct_scores))
 
 
 if not CLEANUP and not RESCORE:
@@ -470,8 +513,9 @@ if RESCORE:
                     input, output, params, log, threads, wildcards
                 )
             finally:
-                # the foldmason db and ref_pdb subset; without cleanup, the
-                # work dir also holds the aligner's files and is kept
+                # pdbfiles list, foldmason db and ref_pdb subset; without
+                # cleanup, the work dir also holds the aligner's files and
+                # is kept
                 if CLEANUP and os.path.exists(params.workdir):
                     remove_tree(params.workdir)
 
@@ -507,7 +551,7 @@ rule concat_scores:
                 +" -e " + data_file("aligned", SAMPLES[0])
                 + " | awk '{{print $1}}' \
                     | tr '\n' ' ' >> {output}")
-        shell("echo -n 'lddt lddt_muscle lddt_ref ' >> {output}")
+        shell("echo -n '" + " ".join(STRUCT_COLUMNS) + " ' >> {output}")
         shell("echo $(head -n 1 " + input.benchmarks[0] + ") >> {output}")
 
         def normalize_line(line):

@@ -38,8 +38,7 @@
     "use_gpu": 1,
     "align_threads": 32,
     "align_mem": 32000,
-    "score_threads": 6,
+    "score_threads": 32,
     "score_mem": 3000,
-    "align_runtime": "4h",
-    "lddt_muscle_only": false
+    "align_runtime": "4h"
 }
